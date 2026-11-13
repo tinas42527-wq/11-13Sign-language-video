@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>高中台灣手語 AI 練習系統</title>
+  <style>
+    :root{
+      --blue:#2b5cb8;--blue-dark:#1e4795;--blue-soft:#eef3fc;
+      --ink:#16233a;--ink-soft:#2c3f5c;--muted:#64748b;
+      --line:#e2e8f2;--bg:#f2f6fc;--green:#0f7a45;--red:#b8352f;
+      --shadow-sm:0 1px 2px rgba(16,38,74,.05),0 3px 10px rgba(16,38,74,.05);
+      --shadow-md:0 8px 28px rgba(16,38,74,.10);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;background:var(--bg);color:var(--ink);line-height:1.55;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+      -webkit-font-smoothing:antialiased;
+    }
+
+    /* ---------- 頁首 ---------- */
+    header{
+      position:relative;overflow:hidden;color:#fff;padding:26px 16px 30px;
+      background:linear-gradient(120deg,#123366 0%,#1f4e8f 45%,#2a75b8 100%);
+      box-shadow:0 2px 16px rgba(16,38,74,.18);
+    }
+    header::before{
+      content:"";position:absolute;width:340px;height:340px;border-radius:50%;
+      right:-90px;top:-160px;background:radial-gradient(circle,rgba(255,255,255,.22),rgba(255,255,255,0) 70%);
+    }
+    header::after{
+      content:"";position:absolute;width:220px;height:220px;border-radius:50%;
+      left:-70px;bottom:-140px;background:radial-gradient(circle,rgba(255,255,255,.14),rgba(255,255,255,0) 70%);
+    }
+    header .wrap,main{max-width:1100px;margin:auto;position:relative;z-index:1}
+    h1{font-size:clamp(22px,4vw,31px);margin:0 0 8px;font-weight:800;letter-spacing:.01em}
+    header p{margin:0;opacity:.9;font-size:14.5px;letter-spacing:.02em}
+
+    /* ---------- 版面 ---------- */
+    main{padding:20px 14px 48px}
+
+    /* ---------- 分頁 ---------- */
+    .tabs{
+      display:flex;gap:6px;flex-wrap:wrap;margin:0 0 18px;padding:6px;
+      background:#e7eefa;border:1px solid #dbe5f4;border-radius:16px;
+      box-shadow:inset 0 1px 2px rgba(16,38,74,.04);
+    }
+    .tab{
+      flex:1 1 auto;border:0;background:transparent;color:#33507d;
+      padding:12px 16px;border-radius:11px;font-weight:700;font-size:15px;
+      cursor:pointer;transition:background .18s,color .18s,box-shadow .18s;
+    }
+    .tab:hover{background:rgba(255,255,255,.72);color:#1d3f73}
+    .tab.active{background:#fff;color:var(--blue);box-shadow:var(--shadow-sm)}
+
+    /* ---------- 卡片 ---------- */
+    .panel,.card{
+      background:#fff;border:1px solid var(--line);border-radius:18px;
+      padding:20px 20px 22px;margin-bottom:16px;box-shadow:var(--shadow-sm);
+    }
+    h2{
+      font-size:19px;margin:0 0 16px;font-weight:800;color:var(--ink);
+      display:flex;align-items:center;gap:10px;letter-spacing:.01em;
+    }
+    h2::before{
+      content:"";width:4px;height:18px;border-radius:4px;flex:none;
+      background:linear-gradient(180deg,#4d88dd,#1e4795);
+    }
+    h3{font-size:15.5px;margin:0 0 10px;font-weight:800;color:var(--ink-soft)}
+
+    /* ---------- 表單 ---------- */
+    label{
+      display:block;font-size:13.5px;font-weight:700;color:var(--ink-soft);
+      margin:12px 0 6px;letter-spacing:.01em;
+    }
+    input,select{
+      width:100%;padding:11px 13px;border:1.5px solid #cfdaea;border-radius:11px;
+      font-size:16px;font-family:inherit;color:var(--ink);background-color:#fbfdff;
+      transition:border-color .16s,box-shadow .16s,background-color .16s;
+    }
+    select{
+      appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:38px;
+      background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%2364748b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' d='M1 1.6 6 6.4 11 1.6'/%3E%3C/svg%3E");
+      background-repeat:no-repeat;background-position:right 14px center;background-size:12px 8px;
+    }
+    input:hover,select:hover{border-color:#b7c7de}
+    input:focus,select:focus{
+      outline:0;border-color:var(--blue);background-color:#fff;
+      box-shadow:0 0 0 4px rgba(43,92,184,.14);
+    }
+    input::placeholder{color:#a8b5c8}
+    input[type=file]{padding:8px;font-size:14px;background-color:#fff}
+    input[type=file]::file-selector-button{
+      margin-right:12px;padding:8px 14px;border:0;border-radius:8px;
+      background:var(--blue-soft);color:var(--blue-dark);font-weight:700;
+      font-family:inherit;font-size:13.5px;cursor:pointer;transition:background .16s;
+    }
+    input[type=file]::file-selector-button:hover{background:#dde8fa}
+
+    /* ---------- 按鈕 ---------- */
+    button,.tab{
+      border:0;border-radius:11px;padding:11px 16px;background:var(--blue);
+      color:#fff;font-weight:700;font-size:14.5px;font-family:inherit;cursor:pointer;
+      transition:transform .06s ease,box-shadow .18s,background .18s,filter .18s,color .18s;
+    }
+    button:hover:not(:disabled),.tab:hover{filter:brightness(1.07);box-shadow:0 4px 14px rgba(43,92,184,.22)}
+    button:active:not(:disabled),.tab:active{transform:translateY(1px);box-shadow:none}
+    button:focus-visible,.tab:focus-visible{outline:3px solid rgba(43,92,184,.35);outline-offset:2px}
+    button.secondary{background:var(--blue-soft);color:#24446f}
+    button.secondary:hover:not(:disabled){background:#e0eafa;box-shadow:0 4px 14px rgba(43,92,184,.14)}
+    button.danger{background:#b8352f}
+    button.danger:hover:not(:disabled){box-shadow:0 4px 14px rgba(184,53,47,.26)}
+    button:disabled{opacity:.45;cursor:not-allowed;filter:none;box-shadow:none}
+
+    /* ---------- 排版工具 ---------- */
+    .muted{color:var(--muted);font-size:13px;line-height:1.7}
+    .small{font-size:12px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .row>*{flex:1}
+    .hidden{display:none!important}
+
+    /* ---------- 影片區 ---------- */
+    .videoBox{
+      background:radial-gradient(circle at 50% 35%,#1e2b3f,#0a1120);
+      border:1px solid #20304a;border-radius:14px;overflow:hidden;
+      min-height:190px;display:flex;align-items:center;justify-content:center;color:#fff;
+      box-shadow:inset 0 2px 14px rgba(0,0,0,.35);
+    }
+    video{width:100%;max-height:430px;background:#0b1220;object-fit:contain;display:block}
+    iframe{width:100%;aspect-ratio:16/9;border:0;border-radius:12px;background:#000}
+    #cameraVideo{transform:scaleX(-1)}
+
+    /* ---------- 狀態列 ---------- */
+    .status{
+      padding:11px 14px;border-radius:11px;margin:12px 0;font-size:13.5px;line-height:1.65;
+      background:var(--blue-soft);color:#22457c;border-left:4px solid #6f9ce0;
+    }
+    .status.good{background:#e9f8ef;color:var(--green);border-left-color:#2fae6a}
+    .status.bad{background:#fdeeee;color:var(--red);border-left-color:#d95757}
+
+    /* ---------- 分數 ---------- */
+    .score{
+      font-size:46px;font-weight:800;color:var(--blue);line-height:1.1;
+      letter-spacing:-.02em;margin-bottom:2px;
+    }
+    .bar{height:10px;background:#e8eef8;border-radius:99px;overflow:hidden;margin-top:10px}
+    .bar span{
+      display:block;height:100%;border-radius:99px;width:0;
+      background:linear-gradient(90deg,#2fae6a,#7ed6a5);
+      transition:width .5s cubic-bezier(.4,0,.2,1);
+    }
+
+    /* ---------- 題目清單 ---------- */
+    .question{
+      border:1px solid var(--line);border-left:4px solid #c3d5f0;border-radius:12px;
+      padding:13px 15px;margin:10px 0;background:#fbfdff;
+      transition:border-color .18s,box-shadow .18s,background .18s;
+    }
+    .question:hover{border-color:#c9dbf5;border-left-color:var(--blue);background:#fff;box-shadow:var(--shadow-sm)}
+    .question b{font-size:15.5px;color:var(--ink)}
+    .question .muted{margin:6px 0 11px}
+    .question button{padding:8px 14px;font-size:13.5px;border-radius:9px}
+    .pill{
+      display:inline-block;border-radius:99px;padding:3px 10px;font-size:12px;font-weight:700;
+      background:#eaf1fb;color:#234a7d;border:1px solid #d5e3f7;vertical-align:middle;
+    }
+
+    /* ---------- 表格 ---------- */
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th{
+      position:sticky;top:0;background:#f1f5fb;color:#3b537a;font-weight:700;
+      text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);white-space:nowrap;
+    }
+    td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;color:var(--ink-soft)}
+    tbody tr{transition:background .15s}
+    tbody tr:hover{background:#f6faff}
+    tbody tr:last-child td{border-bottom:0}
+
+    /* ---------- 動畫 ---------- */
+    @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+    .tabPage:not(.hidden){animation:fadeUp .26s ease}
+    @media(prefers-reduced-motion:reduce){
+      *{animation:none!important;transition:none!important}
+    }
+
+    /* ---------- 響應式 ---------- */
+    @media(max-width:650px){
+      .grid,.grid3{grid-template-columns:1fr}
+      .panel,.card{padding:15px 14px 17px;border-radius:15px}
+      .tabs button{flex:1}
+      .row>*{min-width:100%}
+      header{padding:20px 14px 24px}
+      h2{font-size:17.5px}
+      .score{font-size:38px}
+    }
+  </style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>高中台灣手語 AI 練習系統</h1>
+  <p>MediaPipe 關鍵點擷取・DTW 動作比對・自主練習</p>
+</div></header>
+<main>
+  <div class="tabs">
+    <button class="tab active" data-tab="student">學生練習</button>
+    <button class="tab" data-tab="teacher">教師管理</button>
+    <button class="tab" data-tab="records">練習紀錄</button>
+  </div>
+
+  <section id="student" class="tabPage">
+    <div class="panel">
+      <h2>學生基本資料</h2>
+      <div class="grid3">
+        <div><label>班級</label><input id="className" placeholder="例如：201"></div>
+        <div><label>座號</label><input id="seat" placeholder="例如：12"></div>
+        <div><label>姓名</label><input id="studentName" placeholder="請輸入姓名"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>選擇練習題目</h2>
+      <select id="questionSelect"><option value="">載入題庫中...</option></select>
+      <div id="questionInfo" class="muted">請先選擇題目。</div>
+      <div id="youtubeArea" class="hidden">
+        <label>YouTube 標準教學影片</label>
+        <div id="youtubeFrame"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>學生錄影練習</h2>
+      <div class="videoBox"><video id="cameraVideo" autoplay muted playsinline></video></div>
+      <div class="row" style="margin-top:12px">
+        <button id="cameraStart" class="secondary">開啟攝影機</button>
+        <button id="recordStart">開始錄影</button>
+        <button id="recordStop" class="danger" disabled>停止錄影</button>
+      </div>
+      <div class="row">
+        <button id="nativeRecord" class="secondary">📱 手機／平板：用相機直接錄影（免開鏡頭）</button>
+        <input id="nativeFile" type="file" accept="video/*" capture="user" class="hidden">
+      </div>
+      <div id="recordStatus" class="status">請先選擇題目並開啟攝影機（手機、平板可改按上方「用相機直接錄影」）。</div>
+      <div class="row">
+        <button id="analyzeBtn" disabled>分析手語動作</button>
+        <button id="retryBtn" class="secondary" disabled>重新錄影</button>
+      </div>
+      <p class="muted">建議全身上半身入鏡、雙手不要離開畫面、光線充足，手機請固定於穩定位置。</p>
+    </div>
+    <div id="resultPanel" class="panel hidden">
+      <h2>AI 動作評量結果</h2>
+      <div class="grid">
+        <div><div class="score" id="similarity">--</div><b>動作相似度（原型估計）</b><div class="bar"><span id="scoreBar" style="width:0%"></span></div></div>
+        <div><h3>分項分析</h3><p id="handScore">手型：--</p><p id="positionScore">位置：--</p><p id="trajectoryScore">軌跡：--</p></div>
+      </div>
+      <div id="feedback" class="status"></div>
+      <button id="saveResult">儲存練習成績</button>
+    </div>
+  </section>
+
+  <section id="teacher" class="tabPage hidden">
+    <div class="panel">
+      <h2>教師登入</h2>
+      <label>教師管理密碼</label><input id="teacherPin" type="password" placeholder="請輸入教師密碼">
+      <button id="teacherLogin" style="margin-top:10px">進入管理</button>
+      <div id="teacherStatus" class="status">正式使用前，請在 Apps Script 指令碼屬性設定 TEACHER_PIN。</div>
+    </div>
+    <div id="teacherTools" class="hidden">
+      <div class="panel">
+        <h2>新增／編輯手語題目</h2>
+        <input id="editId" type="hidden">
+        <label>手語詞彙</label><input id="word" placeholder="例如：謝謝">
+        <label>YouTube 影片網址（選填）</label><input id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=...">
+        <div class="grid">
+          <div><label>影片起始秒數</label><input id="startSec" type="number" min="0" value="0"></div>
+          <div><label>影片結束秒數</label><input id="endSec" type="number" min="0" value="0"></div>
+        </div>
+        <label>標準動作影片來源（二擇一）</label>
+        <div id="ytTeacherFrame" class="hidden"></div>
+        <div class="row">
+          <button id="buildFromYoutube" class="secondary">① 用上方 YouTube 影片建立範本（擷取本分頁畫面）</button>
+        </div>
+        <p class="muted">YouTube 方式：填好網址與起迄秒數後按按鈕，在彈出視窗選「此分頁」並分享。系統會即時播放指定片段並擷取手部關鍵點（約需影片長度的時間，最長 10 秒），過程中請勿切換分頁或捲動頁面。</p>
+        <label>② 或上傳影片檔</label>
+        <input id="referenceFile" type="file" accept="video/*">
+        <p class="muted">請使用老師自行拍攝或已取得使用授權的影片。系統只在瀏覽器本機分析並儲存關鍵點特徵，不會儲存或上傳原始影片。</p>
+        <div class="row">
+          <button id="buildTemplate">分析上傳的影片並建立範本</button>
+          <button id="saveQuestion">儲存題目</button>
+        </div>
+        <div id="templateStatus" class="status">尚未建立標準動作特徵。</div>
+      </div>
+      <div class="panel">
+        <h2>題庫管理</h2>
+        <div id="questionList"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="records" class="tabPage hidden">
+    <div class="panel">
+      <h2>學生練習紀錄</h2>
+      <button id="refreshRecords" class="secondary">重新載入</button>
+      <div class="tableWrap" style="margin-top:14px"><table><thead><tr><th>時間</th><th>班級</th><th>座號</th><th>姓名</th><th>詞彙</th><th>相似度</th><th>回饋</th></tr></thead><tbody id="recordsBody"></tbody></table></div>
+    </div>
+  </section>
+  <p class="muted">V1.1 原型：AI 分數是動作特徵相似度估計，不等同於完整台灣手語語意或語法評分。請由教師搭配人工評量。</p>
+</main>
+
+<script type="module">
+import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const $ = id => document.getElementById(id);
+// 可調參數:K 越大評分越嚴;權重加總為 1。請用實測資料校準。
+const CFG = { TPL_MAX: 10, STU_MAX: 15, STEP: 0.2, K: 1.8, MISS: 1.5, POS_GAIN: 5, W: { shape: .5, pos: .2, traj: .3 } };
+const PER = 66;                 // 每手:0-62 手型、63-64 手腕位置、65 偵測旗標
+const HAND = ['右手', '左手'];  // 依「未鏡像」的自拍畫面判定,範本也請用同樣視角錄製
+let data = { questions: [], attempts: [] }, model = null, stream = null;
+let capturing = false, stuFrames = null, latest = null, template = null, authorized = false;
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const r2 = x => Math.round(x * 100) / 100;
+const setStatus = (id, msg, type = '') => { const e = $(id); e.textContent = msg; e.className = 'status ' + type; };
+const LS = { get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+// 部署 Code.gs 後,把網頁應用程式的 /exec 網址貼在這裡(獨立網頁版必填)
+const API_URL = 'https://script.google.com/macros/s/AKfycbw6wmaCB3Jjn0myKLfHubX7XIUAyt8NY4xnYkn3DyD-0QOU0MS_aDaejXoJj07DvTdh/exec';
+async function gasCall(name, payload) {
+  if (typeof google !== 'undefined' && google.script && google.script.run) { // 相容舊的 Apps Script 內嵌模式
+    return new Promise((ok, no) => google.script.run.withSuccessHandler(ok).withFailureHandler(e => no(new Error(e.message || e)))[name](payload));
+  }
+  if (!API_URL) throw new Error('尚未設定 API_URL:請把 Apps Script 部署網址貼到 index.html 的 API_URL。');
+  let res;
+  try {
+    res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: name, payload: payload || {} }) });
+  } catch (e) { throw new Error('無法連線到後端,請檢查網路與 API_URL,並確認部署存取權為「所有人」。'); }
+  let j;
+  try { j = await res.json(); } catch (e) { throw new Error('後端回應格式錯誤,請確認部署網址是 /exec 結尾,且已重新部署新版本。'); }
+  if (!j.ok) throw new Error(j.error || '後端錯誤');
+  return j.result;
+}
+function showTab(tab) {
+  document.querySelectorAll('.tabPage').forEach(p => p.classList.toggle('hidden', p.id !== tab));
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+}
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+['className', 'seat', 'studentName'].forEach(id => { $(id).value = LS.get(id); $(id).addEventListener('change', () => LS.set(id, $(id).value)); });
+
+/* ---------- MediaPipe ---------- */
+async function initModel() {
+  if (model) return model;
+  setStatus('recordStatus', '正在載入 MediaPipe 模型,首次載入需要網路連線...');
+  const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+  const make = delegate => HandLandmarker.createFromOptions(vision, {
+    baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate },
+    runningMode: 'IMAGE', numHands: 2   // 逐張獨立偵測,不依賴時間序追蹤,適合取樣與跳格
+  });
+  try { model = await make('GPU'); } catch (e) { model = await make('CPU'); } // 學校電腦 GPU 常不可用
+  return model;
+}
+function toFrame(res) {
+  const f = new Array(PER * 2 + 2).fill(0), used = [false, false];
+  (res.landmarks || []).forEach((p, i) => {
+    if (!p || p.length < 21) return;
+    let s = (res.handedness?.[i]?.[0]?.categoryName || '').toLowerCase().includes('left') ? 0 : 1;
+    if (used[s]) s = 1 - s;            // 兩手被判成同一邊時,不再互相覆蓋
+    if (used[s]) return;
+    used[s] = true;
+    const w = p[0], sc = Math.max(.025, Math.hypot(p[9].x - w.x, p[9].y - w.y)), b = s * PER;
+    f[b + 63] = r2(w.x); f[b + 64] = r2(w.y); f[b + 65] = 1;
+    for (let k = 0; k < 21; k++) {
+      f[b + k * 3] = r2((p[k].x - w.x) / sc); f[b + k * 3 + 1] = r2((p[k].y - w.y) / sc); f[b + k * 3 + 2] = r2((p[k].z - w.z) / sc);
+    }
+  });
+  return f;
+}
+const has = f => f[65] || f[PER + 65];
+function trim(fr) { let a = 0, b = fr.length; while (a < b && !has(fr[a])) a++; while (b > a && !has(fr[b - 1])) b--; return fr.slice(a, b); }
+
+/* 範本影片:逐格 seek 取樣(一般 mp4 可靠;學生端改為即時擷取,不再錄影後 seek) */
+const seek = (v, t) => new Promise(r => { const to = setTimeout(r, 2000); v.onseeked = () => { clearTimeout(to); r(); }; v.currentTime = t; });
+async function loadVideo(src) {
+  const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = src;
+  await new Promise((ok, no) => { v.onloadedmetadata = ok; v.onerror = () => no(new Error('影片讀取失敗。')); });
+  if (v.readyState < 2) await new Promise(ok => { v.onloadeddata = ok; });
+  return v;
+}
+async function extractFromVideo(v, maxSec, tag) {
+  const m = await initModel(), c = document.createElement('canvas'), x = c.getContext('2d', { willReadFrequently: true });
+  c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
+  const dur = Math.min(v.duration, maxSec), n = Math.floor(dur / CFG.STEP), out = [];
+  for (let i = 0; i <= n; i++) {
+    await seek(v, Math.min(i * CFG.STEP + .01, Math.max(0, dur - .01)));
+    x.drawImage(v, 0, 0, c.width, c.height);
+    out.push(toFrame(m.detect(c)));
+    if (i % 5 === 0) setStatus(tag, `分析中 ${Math.round(i / n * 100)}%`);
+  }
+  return trim(out);
+}
+
+/* ---------- YouTube 標準影片:播放指定片段並擷取本分頁畫面 ---------- */
+let ytApi = null;
+function loadYtApi() {
+  if (ytApi) return ytApi;
+  ytApi = new Promise((ok, no) => {
+    if (window.YT && window.YT.Player) return ok();
+    window.onYouTubeIframeAPIReady = ok;
+    const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api';
+    s.onerror = () => { ytApi = null; no(new Error('無法載入 YouTube 播放器,請檢查網路。')); };
+    document.head.appendChild(s);
+  });
+  return ytApi;
+}
+async function extractFromYoutube(tag) {
+  const id = extractYoutubeId($('youtubeUrl').value.trim());
+  if (!id) throw new Error('請先輸入有效的 YouTube 網址。');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) throw new Error('此瀏覽器不支援畫面擷取,請使用電腦版 Chrome 或 Edge。');
+  const start = Math.max(0, Number($('startSec').value) || 0), end = Number($('endSec').value) || 0;
+  const len = end > start ? Math.min(end - start, CFG.TPL_MAX) : CFG.TPL_MAX;
+  setStatus(tag, '正在載入 YouTube 播放器與 AI 模型...');
+  await loadYtApi(); const m = await initModel();
+  const box = $('ytTeacherFrame'); box.classList.remove('hidden'); box.innerHTML = '<div id="ytPlayer"></div>';
+  const player = await new Promise((ok, no) => {
+    const p = new YT.Player('ytPlayer', {
+      videoId: id, width: '100%', height: Math.round(box.clientWidth * 9 / 16) || 360,
+      playerVars: { start: Math.floor(start), controls: 0, rel: 0, modestbranding: 1, playsinline: 1, disablekb: 1, iv_load_policy: 3, fs: 0 },
+      events: { onReady: () => ok(p), onError: e => no(new Error('YouTube 無法播放此影片(錯誤碼 ' + e.data + '),可能被擁有者禁止嵌入。')) }
+    });
+  });
+  box.scrollIntoView({ block: 'center' });
+  setStatus(tag, '請在彈出視窗選擇「此分頁」並按分享。');
+  let ms;
+  try { ms = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 15 }, audio: false, preferCurrentTab: true }); }
+  catch (e) { throw new Error('無法擷取畫面(' + (e.name || e.message) + ')。若是被拒絕請重按一次;若在 Apps Script 內嵌頁面一直失敗,代表環境禁止畫面擷取,請改用上傳影片檔。'); }
+  try {
+    const track = ms.getVideoTracks()[0];
+    if ((track.getSettings().displaySurface || 'browser') !== 'browser') throw new Error('請選擇「此分頁」,不要選整個螢幕或其他視窗。');
+    const sv = document.createElement('video'); sv.muted = true; sv.playsInline = true; sv.srcObject = ms; await sv.play(); await sleep(600);
+    const c = document.createElement('canvas'), x = c.getContext('2d', { willReadFrequently: true }), out = [];
+    player.mute(); player.seekTo(start, true); player.playVideo();
+    for (let w = 0; w < 80 && player.getPlayerState() !== 1; w++) await sleep(100); // 等待開始播放
+    if (player.getPlayerState() !== 1) throw new Error('影片無法開始播放。');
+    const iframe = box.querySelector('iframe'), t0 = performance.now();
+    while (performance.now() - t0 < (len + 3) * 1000) {
+      const t = performance.now(), cur = player.getCurrentTime();
+      if (cur - start >= len || player.getPlayerState() === 0) break;
+      const r = iframe.getBoundingClientRect(), kx = sv.videoWidth / window.innerWidth, ky = sv.videoHeight / window.innerHeight;
+      c.width = Math.max(2, Math.round(r.width * kx)); c.height = Math.max(2, Math.round(r.height * ky));
+      x.drawImage(sv, r.left * kx, r.top * ky, r.width * kx, r.height * ky, 0, 0, c.width, c.height);
+      out.push(toFrame(m.detect(c)));
+      setStatus(tag, `擷取中 ${Math.max(0, cur - start).toFixed(1)} / ${len.toFixed(1)} 秒...(請勿切換分頁)`);
+      await sleep(Math.max(0, CFG.STEP * 1000 - (performance.now() - t)));
+    }
+    player.pauseVideo();
+    return trim(out);
+  } finally { ms.getTracks().forEach(t => t.stop()); }
+}
+
+/* ---------- DTW 與分項評分 ---------- */
+function prep(fr) { // 每手相對於起點的位移(軌跡用)
+  const st = [null, null];
+  return fr.map(f => [0, 1].map(h => {
+    const b = h * PER; if (!f[b + 65]) return null;
+    if (!st[h]) st[h] = [f[b + 63], f[b + 64]];
+    return { x: f[b + 63], y: f[b + 64], rx: f[b + 63] - st[h][0], ry: f[b + 64] - st[h][1] };
+  }));
+}
+function cell(fa, fb, pa, pb) {
+  let sh = 0, ps = 0, tj = 0, n = 0; const hs = [null, null];
+  for (let h = 0; h < 2; h++) {
+    const A = pa[h], B = pb[h];
+    if (!A && !B) continue;
+    n++;
+    if (!A || !B) { hs[h] = CFG.MISS; sh += CFG.MISS; ps += CFG.MISS; tj += CFG.MISS; continue; } // 一方缺手要扣分
+    let s = 0; const o = h * PER;
+    for (let k = 0; k < 63; k++) { const d = fa[o + k] - fb[o + k]; s += d * d; }
+    hs[h] = Math.sqrt(s / 63); sh += hs[h];
+    ps += Math.hypot(A.x - B.x, A.y - B.y) * CFG.POS_GAIN;
+    tj += Math.hypot(A.rx - B.rx, A.ry - B.ry) * CFG.POS_GAIN;
+  }
+  return n ? { sh: sh / n, ps: ps / n, tj: tj / n, hs } : { sh: 0, ps: 0, tj: 0, hs };
+}
+function align(a, b) {
+  const pa = prep(a), pb = prep(b), n = a.length, m = b.length, W = m + 1, cs = CFG.W;
+  const band = Math.max(Math.ceil(.3 * Math.max(n, m)), Math.abs(n - m)); // Sakoe-Chiba 帶寬
+  const D = new Float64Array((n + 1) * W).fill(Infinity), C = new Array((n + 1) * W);
+  D[0] = 0;
+  for (let i = 1; i <= n; i++) for (let j = Math.max(1, i - band); j <= Math.min(m, i + band); j++) {
+    const c = cell(a[i - 1], b[j - 1], pa[i - 1], pb[j - 1]); C[i * W + j] = c;
+    D[i * W + j] = cs.shape * c.sh + cs.pos * c.ps + cs.traj * c.tj + Math.min(D[(i - 1) * W + j], D[i * W + j - 1], D[(i - 1) * W + j - 1]);
+  }
+  const path = []; let i = n, j = m;
+  while (i > 0 && j > 0) { // 回溯對齊路徑,用來分項統計
+    path.push(C[i * W + j]);
+    const d = D[(i - 1) * W + j - 1], u = D[(i - 1) * W + j], l = D[i * W + j - 1], mn = Math.min(d, u, l);
+    if (mn === d) { i--; j--; } else if (mn === u) i--; else j--;
+  }
+  return { total: D[n * W + m] / (n + m), path };
+}
+function score(ref, stu) {
+  if (ref.length < 3 || stu.length < 3) throw new Error('偵測到的手部動作太少,請確認雙手入鏡、光線充足後重錄。');
+  const { total, path } = align(ref, stu);
+  if (!Number.isFinite(total) || !path.length) throw new Error('無法比對,請重錄。');
+  const avg = k => path.reduce((s, c) => s + c[k], 0) / path.length;
+  const sc = c => Math.max(0, Math.min(100, Math.round(100 * Math.exp(-CFG.K * c))));
+  const handAvg = [0, 1].map(h => { const v = path.map(c => c.hs[h]).filter(x => x !== null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; });
+  const similarity = sc(total), handScore = sc(avg('sh')), positionScore = sc(avg('ps')), trajectoryScore = sc(avg('tj'));
+  const parts = [['手型', handScore, '請對照範本調整手指形狀與手掌朝向'], ['位置', positionScore, '請注意手的高低與離身體的距離'], ['軌跡', trajectoryScore, '請注意移動方向與路徑大小']];
+  const worst = parts.reduce((a, b) => b[1] < a[1] ? b : a);
+  let feedback = similarity >= 85 ? '動作特徵與範本相近,請再由老師確認手語表達。'
+    : `${worst[0]}差異最大:${worst[2]}。`;
+  if (similarity < 85) {
+    const h = handAvg.map((v, i) => [v, i]).filter(x => x[0] !== null).sort((a, b) => b[0] - a[0])[0];
+    if (h && h[0] > 1) feedback += `${HAND[h[1]]}的偏差較明顯,或有一方未入鏡。`;
+  }
+  return { distance: Number(total.toFixed(4)), similarity, handScore, positionScore, trajectoryScore, feedback };
+}
+
+/* ---------- 資料載入與畫面 ---------- */
+const cur = () => data.questions.find(q => q.id === $('questionSelect').value);
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+async function loadData() {
+  try { data.questions = await gasCall('getQuestions'); renderQuestions(); renderQuestionList(); }
+  catch (e) { $('questionSelect').innerHTML = '<option>請確認 Apps Script 已完成 setup()</option>'; console.error(e); }
+}
+async function loadRecords() {
+  const pin = $('teacherPin').value;
+  if (!authorized) { alert('練習紀錄含學生姓名,請先於「教師管理」登入。'); return; }
+  try { data.attempts = await gasCall('getAttempts', { pin }); renderRecords(); } catch (e) { alert(e.message); }
+}
+function renderQuestions() {
+  const s = $('questionSelect'), keep = s.value; s.innerHTML = '<option value="">請選擇手語題目</option>';
+  data.questions.forEach(q => { const o = document.createElement('option'); o.value = q.id; o.textContent = q.word + (q.frames ? '' : '(尚無範本)'); s.appendChild(o); });
+  s.value = keep;
+}
+function renderQuestionList() {
+  const box = $('questionList'); box.innerHTML = '';
+  data.questions.forEach(q => {
+    const d = document.createElement('div'); d.className = 'question';
+    d.innerHTML = `<b>${escapeHtml(q.word)}</b> <span class="pill">${q.frames ? '已有AI範本' : '尚無AI範本'}</span><div class="muted">${q.youtubeUrl ? '有 YouTube 影片' : '無 YouTube 影片'}・${q.frames} 個特徵時間點</div>`;
+    const edit = document.createElement('button'); edit.className = 'secondary'; edit.textContent = '編輯';
+    edit.onclick = async () => {
+      $('editId').value = q.id; $('word').value = q.word; $('youtubeUrl').value = q.youtubeUrl; $('startSec').value = q.startSec; $('endSec').value = q.endSec;
+      setStatus('templateStatus', '載入既有標準特徵...');
+      try { template = await gasCall('getFeatures', { id: q.id }); setStatus('templateStatus', template.length ? '已載入既有標準特徵。' : '此題尚無標準特徵。'); } catch (e) { setStatus('templateStatus', e.message, 'bad'); }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    const del = document.createElement('button'); del.className = 'danger'; del.textContent = '刪除'; del.style.marginLeft = '8px';
+    del.onclick = async () => { if (!confirm('確定刪除此題?')) return; try { await gasCall('deleteQuestion', { pin: $('teacherPin').value, id: q.id }); await loadData(); } catch (e) { alert(e.message); } };
+    d.append(edit, del); box.appendChild(d);
+  });
+  if (!data.questions.length) box.textContent = '目前尚無題目。';
+}
+function renderRecords() {
+  const body = $('recordsBody'); body.innerHTML = '';
+  data.attempts.forEach(a => { const tr = document.createElement('tr'); [a.time, a.className, a.seat, a.name, a.word, a.similarity + '%', a.feedback].forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }); body.appendChild(tr); });
+}
+function extractYoutubeId(url) { try { const u = new URL(url); if (u.hostname.includes('youtu.be')) return u.pathname.slice(1); if (u.searchParams.get('v')) return u.searchParams.get('v'); const m = u.pathname.match(/\/embed\/([^/]+)/); return m ? m[1] : ''; } catch (e) { return ''; } }
+function resetResult() { latest = null; stuFrames = null; $('resultPanel').classList.add('hidden'); $('analyzeBtn').disabled = true; $('retryBtn').disabled = true; }
+
+/* ---------- 學生端 ---------- */
+$('questionSelect').addEventListener('change', async () => {
+  const q = cur(); template = null; resetResult();
+  $('youtubeArea').classList.toggle('hidden', !q?.youtubeUrl);
+  if (!q) { $('questionInfo').textContent = '請先選擇題目。'; return; }
+  if (q.youtubeUrl) {
+    const id = extractYoutubeId(q.youtubeUrl), end = q.endSec > q.startSec ? `&end=${q.endSec}` : '';
+    $('youtubeFrame').innerHTML = id ? `<iframe allow="encrypted-media; picture-in-picture" allowfullscreen src="https://www.youtube-nocookie.com/embed/${id}?start=${q.startSec || 0}${end}"></iframe>` : '影片網址格式無法辨識';
+  }
+  $('questionInfo').textContent = `題目:${q.word}|載入標準範本中...`;
+  try {
+    const f = await gasCall('getFeatures', { id: q.id });
+    if (cur()?.id !== q.id) return; // 已切換題目
+    template = f; $('questionInfo').textContent = `題目:${q.word}|標準特徵:${f.length ? '已建立' : '尚未建立'}`;
+  } catch (e) { $('questionInfo').textContent = '範本載入失敗:' + e.message; }
+});
+
+$('cameraStart').onclick = async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+    $('cameraVideo').srcObject = stream; setStatus('recordStatus', '攝影機已開啟。請確認雙手完整入鏡。', 'good');
+    initModel().catch(() => {}); // 先在背景載入模型
+  } catch (e) { setStatus('recordStatus', '無法開啟攝影機:' + e.message, 'bad'); }
+};
+// 即時擷取:錄製當下就偵測關鍵點,不存影片(隱私較好),也避開 MediaRecorder 影片無法 seek 與長度為 Infinity 的問題
+$('recordStart').onclick = async () => {
+  if (!stream) { setStatus('recordStatus', '請先開啟攝影機。', 'bad'); return; }
+  if (!cur()) { setStatus('recordStatus', '請先選擇題目。', 'bad'); return; }
+  try { await initModel(); } catch (e) { setStatus('recordStatus', '模型載入失敗:' + e.message, 'bad'); return; }
+  resetResult(); $('recordStart').disabled = true;
+  for (let s = 3; s > 0; s--) { setStatus('recordStatus', `準備:${s}...請就定位`); await sleep(1000); }
+  capturing = true; stuFrames = []; $('recordStop').disabled = false;
+  const v = $('cameraVideo'), c = document.createElement('canvas'), x = c.getContext('2d', { willReadFrequently: true });
+  c.width = v.videoWidth || 640; c.height = v.videoHeight || 480;
+  const t0 = performance.now();
+  while (capturing && performance.now() - t0 < CFG.STU_MAX * 1000) {
+    const t = performance.now(); x.drawImage(v, 0, 0, c.width, c.height);
+    const f = toFrame(model.detect(c)); stuFrames.push(f);
+    setStatus('recordStatus', `錄製中 ${((t - t0) / 1000).toFixed(1)} 秒・${has(f) ? '已偵測到手' : '未偵測到手'}・完成請按停止`);
+    await sleep(Math.max(0, CFG.STEP * 1000 - (performance.now() - t)));
+  }
+  capturing = false; $('recordStart').disabled = false; $('recordStop').disabled = true;
+  stuFrames = trim(stuFrames);
+  const ok = stuFrames.length >= 3;
+  $('analyzeBtn').disabled = !ok; $('retryBtn').disabled = false;
+  setStatus('recordStatus', ok ? `錄製完成(${stuFrames.length} 個有效時間點),可以開始分析。` : '幾乎沒有偵測到手,請調整光線與位置後重錄。', ok ? 'good' : 'bad');
+};
+$('recordStop').onclick = () => { capturing = false; };
+// 手機/平板:呼叫系統相機錄影,錄完回傳影片檔,再於本機分析關鍵點(不上傳影片)
+$('nativeRecord').onclick = () => { if (!cur()) { setStatus('recordStatus', '請先選擇題目。', 'bad'); return; } $('nativeFile').click(); };
+$('nativeFile').onchange = async e => {
+  const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+  resetResult(); const url = URL.createObjectURL(file);
+  try {
+    setStatus('recordStatus', '正在分析錄好的影片...');
+    const v = await loadVideo(url);
+    if (!v.videoWidth) throw new Error('這不是影片檔,請重新錄影。');
+    stuFrames = trim(await extractFromVideo(v, CFG.STU_MAX, 'recordStatus'));
+    const ok = stuFrames.length >= 3;
+    $('analyzeBtn').disabled = !ok; $('retryBtn').disabled = false;
+    setStatus('recordStatus', ok ? `影片分析完成(${stuFrames.length} 個有效時間點),可以按「分析手語動作」。` : '幾乎沒有偵測到手,請調整光線與位置後重錄。', ok ? 'good' : 'bad');
+  } catch (err) { stuFrames = null; setStatus('recordStatus', '影片處理失敗:' + err.message, 'bad'); }
+  finally { URL.revokeObjectURL(url); }
+};
+$('retryBtn').onclick = () => { resetResult(); setStatus('recordStatus', '請重新錄製。'); };
+
+$('analyzeBtn').onclick = () => {
+  const q = cur(); if (!q) { alert('請先選擇題目。'); return; }
+  if (!template?.length) { alert('此題尚未建立 AI 標準範本。教師需先用 YouTube 或上傳影片建立範本。'); return; }
+  try {
+    latest = score(template, stuFrames);
+    $('similarity').textContent = latest.similarity + '%'; $('scoreBar').style.width = latest.similarity + '%';
+    $('handScore').textContent = '手型:' + latest.handScore; $('positionScore').textContent = '位置:' + latest.positionScore; $('trajectoryScore').textContent = '軌跡:' + latest.trajectoryScore;
+    setStatus('feedback', latest.feedback); $('resultPanel').classList.remove('hidden'); setStatus('recordStatus', '分析完成。', 'good');
+  } catch (e) { setStatus('recordStatus', '分析失敗:' + e.message, 'bad'); }
+};
+$('saveResult').onclick = async () => {
+  const q = cur(); if (!latest || !q) return;
+  const info = { className: $('className').value, seat: $('seat').value, name: $('studentName').value };
+  if (!info.className.trim() || !info.seat.trim() || !info.name.trim()) { alert('請先填寫班級、座號、姓名。'); return; }
+  const btn = $('saveResult'); btn.disabled = true;
+  try { await gasCall('saveAttempt', { ...info, questionId: q.id, word: q.word, ...latest }); alert('練習成績已儲存。'); }
+  catch (e) { alert('儲存失敗:' + e.message); }
+  finally { btn.disabled = false; }
+};
+
+/* ---------- 教師端 ---------- */
+$('teacherLogin').onclick = async () => {
+  const pin = $('teacherPin').value;
+  if (!pin) { setStatus('teacherStatus', '請輸入教師密碼。', 'bad'); return; }
+  try { await gasCall('verifyTeacher', { pin }); authorized = true; $('teacherTools').classList.remove('hidden'); setStatus('teacherStatus', '已開啟教師管理介面。', 'good'); }
+  catch (e) { authorized = false; $('teacherTools').classList.add('hidden'); setStatus('teacherStatus', e.message, 'bad'); }
+};
+$('buildTemplate').onclick = async () => {
+  const file = $('referenceFile').files[0]; if (!file) { setStatus('templateStatus', '請先選擇標準動作影片檔。', 'bad'); return; }
+  const url = URL.createObjectURL(file);
+  try {
+    setStatus('templateStatus', '正在擷取標準影片關鍵點...');
+    const v = await loadVideo(url);
+    if (!v.videoWidth) throw new Error('這個檔案沒有影像(可能是 mp3 等音檔),請改選 mp4/mov 影片。');
+    template = await extractFromVideo(v, CFG.TPL_MAX, 'templateStatus');
+    if (template.length < 3) throw new Error('有效動作太短或偵測不到手,請使用畫面清楚、雙手入鏡、至少約 0.6 秒的動作影片。');
+    if (JSON.stringify(template).length > 49000) throw new Error('範本資料過大,請縮短影片。');
+    setStatus('templateStatus', `標準範本建立成功:${template.length} 個時間點(最長取前 ${CFG.TPL_MAX} 秒)。請按「儲存題目」。`, 'good');
+  } catch (e) { template = null; setStatus('templateStatus', '建立失敗:' + e.message, 'bad'); }
+  finally { URL.revokeObjectURL(url); }
+};
+$('buildFromYoutube').onclick = async () => {
+  const btn = $('buildFromYoutube'); btn.disabled = true;
+  try {
+    template = await extractFromYoutube('templateStatus');
+    if (template.length < 3) throw new Error('有效動作太短或偵測不到手,請確認起迄秒數對準手語動作,且影片中雙手清楚。');
+    if (JSON.stringify(template).length > 49000) throw new Error('範本資料過大,請縮短片段。');
+    setStatus('templateStatus', `YouTube 範本建立成功:${template.length} 個時間點。請按「儲存題目」。`, 'good');
+  } catch (e) { template = null; setStatus('templateStatus', '建立失敗:' + e.message, 'bad'); }
+  finally { btn.disabled = false; }
+};
+$('saveQuestion').onclick = async () => {
+  if (!authorized) { alert('請先進入教師管理。'); return; }
+  const payload = { pin: $('teacherPin').value, id: $('editId').value, word: $('word').value, youtubeUrl: $('youtubeUrl').value, startSec: $('startSec').value, endSec: $('endSec').value, features: template || [] };
+  try {
+    await gasCall('saveQuestion', payload);
+    ['editId', 'word', 'youtubeUrl', 'referenceFile'].forEach(id => $(id).value = ''); template = null;
+    $('ytTeacherFrame').innerHTML = ''; $('ytTeacherFrame').classList.add('hidden'); setStatus('templateStatus', '題目已儲存。', 'good'); await loadData(); alert('題目已儲存。');
+  } catch (e) { alert('儲存失敗:' + e.message); }
+};
+$('refreshRecords').onclick = loadRecords;
+loadData();
+</script>
+</body>
+</html>
