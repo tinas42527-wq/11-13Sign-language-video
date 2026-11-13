@@ -279,6 +279,8 @@
         </div>
         <label>標準動作影片來源（二擇一）</label>
         <div id="ytTeacherFrame" class="hidden"></div>
+        <canvas id="ytDebug" class="hidden" style="width:100%;max-width:480px;border-radius:12px;margin-top:8px;background:#000"></canvas>
+        <div id="ytDebugNote" class="muted"></div>
         <div class="row">
           <button id="buildFromYoutube" class="secondary">① 用上方 YouTube 影片建立範本（擷取本分頁畫面）</button>
         </div>
@@ -355,7 +357,7 @@ async function initModel() {
   const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
   const make = delegate => HandLandmarker.createFromOptions(vision, {
     baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate },
-    runningMode: 'IMAGE', numHands: 2   // 逐張獨立偵測,不依賴時間序追蹤,適合取樣與跳格
+    runningMode: 'IMAGE', numHands: 2, minHandDetectionConfidence: .3, minHandPresenceConfidence: .3   // 逐張獨立偵測,不依賴時間序追蹤,適合取樣與跳格
   });
   try { model = await make('GPU'); } catch (e) { model = await make('CPU'); } // 學校電腦 GPU 常不可用
   return model;
@@ -401,7 +403,7 @@ async function extractFromVideo(v, maxSec, tag) {
 }
 
 /* ---------- YouTube 標準影片:播放指定片段並擷取本分頁畫面 ---------- */
-let ytApi = null;
+let ytApi = null, ytStat = '';
 function loadYtApi() {
   if (ytApi) return ytApi;
   ytApi = new Promise((ok, no) => {
@@ -439,6 +441,7 @@ async function extractFromYoutube(tag) {
     if ((track.getSettings().displaySurface || 'browser') !== 'browser') throw new Error('請選擇「此分頁」,不要選整個螢幕或其他視窗。');
     const sv = document.createElement('video'); sv.muted = true; sv.playsInline = true; sv.srcObject = ms; await sv.play(); await sleep(600);
     const c = document.createElement('canvas'), x = c.getContext('2d', { willReadFrequently: true }), out = [];
+    let hit = 0; ytStat = '';
     player.mute(); player.seekTo(start, true); player.playVideo();
     for (let w = 0; w < 80 && player.getPlayerState() !== 1; w++) await sleep(100); // 等待開始播放
     if (player.getPlayerState() !== 1) throw new Error('影片無法開始播放。');
@@ -449,11 +452,14 @@ async function extractFromYoutube(tag) {
       const r = iframe.getBoundingClientRect(), kx = sv.videoWidth / window.innerWidth, ky = sv.videoHeight / window.innerHeight;
       c.width = Math.max(2, Math.round(r.width * kx)); c.height = Math.max(2, Math.round(r.height * ky));
       x.drawImage(sv, r.left * kx, r.top * ky, r.width * kx, r.height * ky, 0, 0, c.width, c.height);
-      out.push(toFrame(m.detect(c)));
+      const fr = toFrame(m.detect(c)); out.push(fr); if (has(fr)) hit++;
+      if (has(fr) || hit === 0) { const d = $('ytDebug'); d.classList.remove('hidden'); d.width = c.width; d.height = c.height; d.getContext('2d').drawImage(c, 0, 0); } // 預覽:顯示實際擷取到的畫面
       setStatus(tag, `擷取中 ${Math.max(0, cur - start).toFixed(1)} / ${len.toFixed(1)} 秒...(請勿切換分頁)`);
       await sleep(Math.max(0, CFG.STEP * 1000 - (performance.now() - t)));
     }
     player.pauseVideo();
+    ytStat = `共擷取 ${out.length} 格,偵測到手 ${hit} 格`;
+    $('ytDebugNote').textContent = '上方預覽為實際擷取到的畫面(' + ytStat + ')。';
     return trim(out);
   } finally { ms.getTracks().forEach(t => t.stop()); }
 }
@@ -671,7 +677,7 @@ $('buildFromYoutube').onclick = async () => {
   const btn = $('buildFromYoutube'); btn.disabled = true;
   try {
     template = await extractFromYoutube('templateStatus');
-    if (template.length < 3) throw new Error('有效動作太短或偵測不到手,請確認起迄秒數對準手語動作,且影片中雙手清楚。');
+    if (template.length < 3) throw new Error('有效動作太短或偵測不到手,請確認起迄秒數對準手語動作,且影片中雙手清楚。(' + ytStat + ')');
     if (JSON.stringify(template).length > 49000) throw new Error('範本資料過大,請縮短片段。');
     setStatus('templateStatus', `YouTube 範本建立成功:${template.length} 個時間點。請按「儲存題目」。`, 'good');
   } catch (e) { template = null; setStatus('templateStatus', '建立失敗:' + e.message, 'bad'); }
