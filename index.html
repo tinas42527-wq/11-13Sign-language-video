@@ -198,6 +198,45 @@
       h2{font-size:17.5px}
       .score{font-size:38px}
     }
+
+    /* ====== 按鈕清晰化(覆蓋上方樣式) ====== */
+    button{min-height:46px;line-height:1.25;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center}
+    /* 主要:實心藍 */
+    button{background:var(--blue);color:#fff;border:2px solid var(--blue);box-shadow:0 2px 6px rgba(43,92,184,.28)}
+    /* 次要:白底藍框,和底色、狀態列明顯區隔 */
+    button.secondary{background:#fff;color:var(--blue-dark);border:2px solid #8fb0e6;box-shadow:none}
+    button.secondary:hover:not(:disabled){background:#eaf1fd;border-color:var(--blue);box-shadow:0 3px 10px rgba(43,92,184,.18)}
+    /* 危險:實心紅 */
+    button.danger{background:#c62f2f;border-color:#c62f2f;color:#fff;box-shadow:0 2px 6px rgba(198,47,47,.3)}
+    /* 完成/送出:實心綠 */
+    button.success{background:#14804a;border-color:#14804a;color:#fff;box-shadow:0 2px 6px rgba(20,128,74,.3)}
+    button.success:hover:not(:disabled){box-shadow:0 4px 14px rgba(20,128,74,.3)}
+    /* 停用:灰底灰字,不再是「淡淡的原色」 */
+    button:disabled,button.secondary:disabled,button.danger:disabled,button.success:disabled{
+      opacity:1;background:#e9edf3;border:2px dashed #c3cddb;color:#8190a5;box-shadow:none;cursor:not-allowed}
+    /* 分頁:未選取=透明深字,選取=實心藍 */
+    .tabs .tab{background:transparent;color:#33507d;border:0;box-shadow:none;min-height:48px;font-size:15.5px}
+    .tabs .tab:hover{background:rgba(255,255,255,.8);color:#1d3f73;filter:none;box-shadow:none}
+    .tabs .tab.active{background:var(--blue);color:#fff;box-shadow:0 3px 10px rgba(43,92,184,.32)}
+    /* 按鈕列 */
+    .btnRow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0 0}
+    .btnRow.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .btnRow button{width:100%}
+    .btnRow button{font-size:15.5px}
+    .orLine{display:flex;align-items:center;gap:12px;margin:14px 0;color:var(--muted);font-size:13px;font-weight:700}
+    .orLine::before,.orLine::after{content:"";flex:1;height:1px;background:var(--line)}
+    .bigBtn{width:100%;flex-direction:column;gap:2px;padding:12px 16px}
+    .bigBtn small{font-weight:500;font-size:12.5px;opacity:.85}
+    /* 步驟標籤 */
+    .stepTag{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;
+      background:var(--blue);color:#fff;font-size:13px;font-weight:800;flex:none}
+    .stepHead{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:800;color:var(--ink-soft);margin:16px 0 0}
+    /* 教師:兩種來源各自成卡片 */
+    .opt{border:2px solid var(--line);border-radius:14px;padding:14px 16px;margin:12px 0;background:#fbfdff}
+    .opt h3{display:flex;align-items:center;gap:8px;margin:0 0 8px}
+    .opt button{width:100%}
+    .opt .muted{margin:10px 0 0}
+    @media(max-width:650px){.btnRow{grid-template-columns:1fr}.btnRow.two{grid-template-columns:1fr}.row>*{min-width:100%}}
   </style>
 </head>
 <body>
@@ -233,19 +272,20 @@
     <div class="panel">
       <h2>學生錄影練習</h2>
       <div class="videoBox"><video id="cameraVideo" autoplay muted playsinline></video></div>
-      <div class="row" style="margin-top:12px">
-        <button id="cameraStart" class="secondary">開啟攝影機</button>
-        <button id="recordStart">開始錄影</button>
-        <button id="recordStop" class="danger" disabled>停止錄影</button>
+      <div class="stepHead"><span class="stepTag">1</span>開啟鏡頭並錄影</div>
+      <div class="btnRow">
+        <button id="cameraStart" class="secondary">🎥 開啟攝影機</button>
+        <button id="recordStart">⏺ 開始錄影</button>
+        <button id="recordStop" class="danger" disabled>⏹ 停止錄影</button>
       </div>
-      <div class="row">
-        <button id="nativeRecord" class="secondary">📱 手機／平板：用相機直接錄影（免開鏡頭）</button>
-        <input id="nativeFile" type="file" accept="video/*" capture="user" class="hidden">
-      </div>
-      <div id="recordStatus" class="status">請先選擇題目並開啟攝影機（手機、平板可改按上方「用相機直接錄影」）。</div>
-      <div class="row">
-        <button id="analyzeBtn" disabled>分析手語動作</button>
-        <button id="retryBtn" class="secondary" disabled>重新錄影</button>
+      <div class="orLine">或</div>
+      <button id="nativeRecord" class="secondary bigBtn">📱 手機／平板：用相機直接錄影<small>免開鏡頭,錄完即可分析</small></button>
+      <input id="nativeFile" type="file" accept="video/*" capture="user" class="hidden">
+      <div id="recordStatus" class="status">請先選擇題目並開啟攝影機（手機、平板可改按「用相機直接錄影」）。</div>
+      <div class="stepHead"><span class="stepTag">2</span>分析動作</div>
+      <div class="btnRow two">
+        <button id="analyzeBtn" class="success" disabled>🔍 分析手語動作</button>
+        <button id="retryBtn" class="secondary" disabled>🔄 重新錄影</button>
       </div>
       <p class="muted">建議全身上半身入鏡、雙手不要離開畫面、光線充足，手機請固定於穩定位置。</p>
     </div>
@@ -256,7 +296,7 @@
         <div><h3>分項分析</h3><p id="handScore">手型：--</p><p id="positionScore">位置：--</p><p id="trajectoryScore">軌跡：--</p></div>
       </div>
       <div id="feedback" class="status"></div>
-      <button id="saveResult">儲存練習成績</button>
+      <button id="saveResult" class="success" style="width:100%">💾 儲存練習成績</button>
     </div>
   </section>
 
@@ -264,7 +304,7 @@
     <div class="panel">
       <h2>教師登入</h2>
       <label>教師管理密碼</label><input id="teacherPin" type="password" placeholder="請輸入教師密碼">
-      <button id="teacherLogin" style="margin-top:10px">進入管理</button>
+      <button id="teacherLogin" style="margin-top:12px;width:100%">🔑 進入管理</button>
       <div id="teacherStatus" class="status">正式使用前，請在 Apps Script 指令碼屬性設定 TEACHER_PIN。</div>
     </div>
     <div id="teacherTools" class="hidden">
@@ -278,20 +318,22 @@
           <div><label>影片結束秒數</label><input id="endSec" type="number" min="0" value="0"></div>
         </div>
         <label>標準動作影片來源（二擇一）</label>
-        <div id="ytTeacherFrame" class="hidden"></div>
-        <canvas id="ytDebug" class="hidden" style="width:100%;max-width:480px;border-radius:12px;margin-top:8px;background:#000"></canvas>
-        <div id="ytDebugNote" class="muted"></div>
-        <div class="row">
-          <button id="buildFromYoutube" class="secondary">① 用上方 YouTube 影片建立範本（擷取本分頁畫面）</button>
+        <div class="opt">
+          <h3><span class="stepTag">A</span>用上方 YouTube 影片</h3>
+          <div id="ytTeacherFrame" class="hidden"></div>
+          <canvas id="ytDebug" class="hidden" style="width:100%;max-width:480px;border-radius:12px;margin:8px 0;background:#000"></canvas>
+          <div id="ytDebugNote" class="muted"></div>
+          <button id="buildFromYoutube" class="secondary">▶ 用 YouTube 影片建立範本（擷取本分頁畫面）</button>
+          <p class="muted">填好網址與起迄秒數（純秒數,例如 12 到 16）後按按鈕，在彈出視窗選「此分頁」並分享。系統會即時播放指定片段並擷取手部關鍵點（最長 10 秒），過程中請勿切換分頁或捲動頁面。</p>
         </div>
-        <p class="muted">YouTube 方式：填好網址與起迄秒數後按按鈕，在彈出視窗選「此分頁」並分享。系統會即時播放指定片段並擷取手部關鍵點（約需影片長度的時間，最長 10 秒），過程中請勿切換分頁或捲動頁面。</p>
-        <label>② 或上傳影片檔</label>
-        <input id="referenceFile" type="file" accept="video/*">
-        <p class="muted">請使用老師自行拍攝或已取得使用授權的影片。系統只在瀏覽器本機分析並儲存關鍵點特徵，不會儲存或上傳原始影片。</p>
-        <div class="row">
-          <button id="buildTemplate">分析上傳的影片並建立範本</button>
-          <button id="saveQuestion">儲存題目</button>
+        <div class="opt">
+          <h3><span class="stepTag">B</span>上傳影片檔</h3>
+          <input id="referenceFile" type="file" accept="video/*">
+          <button id="buildTemplate" class="secondary" style="margin-top:10px">📂 分析上傳的影片並建立範本</button>
+          <p class="muted">請使用老師自行拍攝或已取得使用授權的影片。系統只在瀏覽器本機分析並儲存關鍵點特徵，不會儲存或上傳原始影片。</p>
         </div>
+        <div class="stepHead"><span class="stepTag">✓</span>範本建立完成後</div>
+        <div class="btnRow"><button id="saveQuestion" class="success" style="grid-column:1/-1">💾 儲存題目</button></div>
         <div id="templateStatus" class="status">尚未建立標準動作特徵。</div>
       </div>
       <div class="panel">
@@ -304,7 +346,7 @@
   <section id="records" class="tabPage hidden">
     <div class="panel">
       <h2>學生練習紀錄</h2>
-      <button id="refreshRecords" class="secondary">重新載入</button>
+      <button id="refreshRecords" class="secondary">🔄 重新載入</button>
       <div class="tableWrap" style="margin-top:14px"><table><thead><tr><th>時間</th><th>班級</th><th>座號</th><th>姓名</th><th>詞彙</th><th>相似度</th><th>回饋</th></tr></thead><tbody id="recordsBody"></tbody></table></div>
     </div>
   </section>
@@ -420,6 +462,7 @@ async function extractFromYoutube(tag) {
   if (!id) throw new Error('請先輸入有效的 YouTube 網址。');
   if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) throw new Error('此瀏覽器不支援畫面擷取,請使用電腦版 Chrome 或 Edge。');
   const start = Math.max(0, Number($('startSec').value) || 0), end = Number($('endSec').value) || 0;
+  if (end > start && end - start < 0.8) throw new Error(`起迄秒數只相差 ${r2(end - start)} 秒,太短。這兩格要填「純秒數」:例如影片第 12 秒到第 16 秒,就填 12 和 16(不是 0.12 或 0:12)。`);
   const len = end > start ? Math.min(end - start, CFG.TPL_MAX) : CFG.TPL_MAX;
   setStatus(tag, '正在載入 YouTube 播放器與 AI 模型...');
   await loadYtApi(); const m = await initModel();
