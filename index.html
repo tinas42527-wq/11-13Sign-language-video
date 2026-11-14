@@ -133,6 +133,12 @@
     video{width:100%;max-height:430px;background:#0b1220;object-fit:contain;display:block}
     iframe{width:100%;aspect-ratio:16/9;border:0;border-radius:12px;background:#000}
     #cameraVideo{transform:scaleX(-1)}
+    /* 攝影機畫面 + 疊加層(輪廓框/骨架):影片與畫布同尺寸、同樣鏡像,座標才會對齊 */
+    .camWrap{position:relative;width:100%;max-width:640px;margin:0 auto;aspect-ratio:4/3;background:#0b1220}
+    .camWrap video,.camWrap canvas{position:absolute;inset:0;width:100%;height:100%;max-height:none;object-fit:cover}
+    #camOverlay{transform:scaleX(-1);pointer-events:none}
+    .camTools{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:10px 0 0;font-size:13px;color:#456}
+    .camTools label{display:flex;gap:6px;align-items:center;cursor:pointer}
 
     /* ---------- 狀態列 ---------- */
     .status{
@@ -298,7 +304,9 @@
     </div>
     <div class="panel">
       <h2>學生錄影練習</h2>
-      <div class="videoBox"><video id="cameraVideo" autoplay muted playsinline></video></div>
+      <div class="videoBox"><div class="camWrap" id="camWrap"><video id="cameraVideo" autoplay muted playsinline></video><canvas id="camOverlay"></canvas></div></div>
+      <div id="trackBadge" class="status">開啟攝影機後,這裡會顯示手部偵測是否穩定。</div>
+      <div class="camTools"><label><input type="checkbox" id="guideToggle" checked> 顯示人形輪廓框與骨架</label><span>① 身體對齊虛線輪廓 ② 舉手確認彩色骨架穩定跟著動 ③ 再按「開始錄影」</span></div>
       <div class="stepHead"><span class="stepTag">1</span>開啟鏡頭並錄影</div>
       <div class="btnRow">
         <button id="cameraStart" class="secondary">🎥 開啟攝影機</button>
@@ -479,6 +487,106 @@ function fillGaps(fr, maxGap = 3) { // 偵測偶爾漏掉的格(手在邊緣、�
   return out;
 }
 function trim(fr) { let a = 0, b = fr.length; while (a < b && !has(fr[a])) a++; while (b > a && !has(fr[b - 1])) b--; return fillGaps(fr.slice(a, b)); }
+
+/* ---------- 自動去頭尾靜止幀(Trimming) ---------- */
+// 以「手腕移動速度」與「手指形狀變化」判斷有沒有在做動作,裁掉開頭舉手前、結尾放手後的靜止格。
+// 可調:WRIST=手腕速度門檻(畫面比例/秒);SHAPE=手型變化門檻;PAD=動作前後各保留的格數(STEP 0.2 秒/格)。
+const TRIM = { WRIST: .12, SHAPE: .09, PAD: 2, MIN_KEEP: 3 };
+let lastCut = 0;
+function motionOf(a, b) { // 相鄰兩格之間的動作量(兩手取較大者)
+  let wrist = 0, shape = 0;
+  for (let h = 0; h < 2; h++) {
+    const o = h * PER; if (!a[o + 65] || !b[o + 65]) continue;
+    wrist = Math.max(wrist, Math.hypot(b[o + 63] - a[o + 63], b[o + 64] - a[o + 64]) / CFG.STEP);
+    let sum = 0; for (let k = 0; k < 21; k++) sum += Math.abs(b[o + k * 3] - a[o + k * 3]) + Math.abs(b[o + k * 3 + 1] - a[o + k * 3 + 1]);
+    shape = Math.max(shape, sum / 42);
+  }
+  return { wrist, shape };
+}
+function motionTrim(fr) {
+  const n = fr.length; if (n < TRIM.MIN_KEEP + 2) return fr;
+  const act = new Array(n).fill(false);
+  for (let i = 1; i < n; i++) { const m = motionOf(fr[i - 1], fr[i]); act[i] = m.wrist > TRIM.WRIST || m.shape > TRIM.SHAPE; }
+  const c = i => (act[i] ? 1 : 0);
+  let first = -1, last = -1;
+  for (let i = 1; i < n; i++) if (c(i) && c(i) + c(i + 1) + c(i + 2) >= 2) { first = i; break; }        // 連續 3 格中至少 2 格在動才算開始,濾掉單格抖動
+  for (let j = n - 1; j >= 1; j--) if (c(j) && c(j) + c(j - 1) + c(j - 2) >= 2) { last = j; break; }
+  if (first < 0 || last < first) return fr;                                                       // 整段幾乎沒動(例如定格手型):不裁,維持原樣
+  const a = Math.max(0, first - 1 - TRIM.PAD), b = Math.min(n - 1, last + TRIM.PAD);
+  return b - a + 1 >= TRIM.MIN_KEEP ? fr.slice(a, b + 1) : fr;
+}
+function trimStatic(fr) { const t = motionTrim(fr); lastCut = r2((fr.length - t.length) * CFG.STEP); return t; }
+const cutNote = () => lastCut >= .4 ? `,已自動裁掉頭尾靜止約 ${lastCut} 秒` : '';
+
+/* ---------- 人形引導框與骨架即時預覽 ---------- */
+const overlay = $('camOverlay'), octx = overlay.getContext('2d');
+const SKEL = [ // [顏色, 連線]
+  ['#ff6b6b', [[0, 1], [1, 2], [2, 3], [3, 4]]], ['#feca57', [[0, 5], [5, 6], [6, 7], [7, 8]]],
+  ['#1dd1a1', [[9, 10], [10, 11], [11, 12]]], ['#48dbfb', [[13, 14], [14, 15], [15, 16]]],
+  ['#c56cf0', [[0, 17], [17, 18], [18, 19], [19, 20]]], ['rgba(255,255,255,.75)', [[5, 9], [9, 13], [13, 17]]]
+];
+const TIP_COLOR = ['#ff6b6b', '#feca57', '#1dd1a1', '#48dbfb', '#c56cf0'];
+let showGuide = LS.get('showGuide') !== '0', badgeText = '', recent = [];
+$('guideToggle').checked = showGuide;
+$('guideToggle').onchange = e => { showGuide = e.target.checked; LS.set('showGuide', showGuide ? '1' : '0'); drawOverlay(null); };
+function sizeOverlay() {
+  const v = $('cameraVideo'), w = v.videoWidth || 640, h = v.videoHeight || 480;
+  if (overlay.width !== w || overlay.height !== h) { overlay.width = w; overlay.height = h; }
+  $('camWrap').style.aspectRatio = `${w}/${h}`; $('camWrap').style.maxWidth = h > w ? '360px' : '640px';
+}
+function drawGuide(W, H) { // 半透明上半身參考輪廓(頭、頸、肩)
+  const p = new Path2D();
+  p.ellipse(.5 * W, .27 * H, .095 * W, .15 * H, 0, 0, Math.PI * 2);
+  p.moveTo(.10 * W, H); p.lineTo(.10 * W, .70 * H); p.quadraticCurveTo(.10 * W, .52 * H, .30 * W, .50 * H);
+  p.lineTo(.43 * W, .46 * H); p.lineTo(.43 * W, .40 * H); p.lineTo(.57 * W, .40 * H); p.lineTo(.57 * W, .46 * H);
+  p.lineTo(.70 * W, .50 * H); p.quadraticCurveTo(.90 * W, .52 * H, .90 * W, .70 * H); p.lineTo(.90 * W, H); p.closePath();
+  octx.save(); octx.fillStyle = 'rgba(120,180,255,.12)'; octx.fill(p);
+  octx.lineWidth = Math.max(2, W / 220); octx.setLineDash([10, 8]); octx.strokeStyle = 'rgba(255,255,255,.7)'; octx.stroke(p); octx.restore();
+}
+function drawHands(res, W, H) {
+  octx.save(); octx.lineCap = 'round'; octx.lineWidth = Math.max(3, W / 180);
+  (res.landmarks || []).forEach(pt => {
+    if (!pt || pt.length < 21) return;
+    SKEL.forEach(([col, lines]) => { octx.strokeStyle = col; lines.forEach(([a, b]) => { octx.beginPath(); octx.moveTo(pt[a].x * W, pt[a].y * H); octx.lineTo(pt[b].x * W, pt[b].y * H); octx.stroke(); }); });
+    for (let k = 0; k < 21; k++) {
+      octx.fillStyle = k === 0 ? '#fff' : TIP_COLOR[Math.min(4, Math.floor((k - 1) / 4))];
+      octx.beginPath(); octx.arc(pt[k].x * W, pt[k].y * H, k === 0 ? W / 110 : W / 170, 0, Math.PI * 2); octx.fill();
+    }
+  });
+  octx.restore();
+}
+function updateBadge(res) {
+  if (capturing) return;
+  const hands = res?.landmarks || [];
+  let edge = false;
+  hands.forEach(pt => pt.forEach(q => { if (q.x < .02 || q.x > .98 || q.y < .02 || q.y > .98) edge = true; }));
+  recent.push(hands.length > 0 && !edge); if (recent.length > 6) recent.shift();
+  let msg, type = '';
+  if (!hands.length) msg = '🟡 還沒看到手:請把手舉進畫面,確認彩色骨架會跟著動。';
+  else if (edge) msg = '🟠 手太靠近畫面邊緣,請往中間移一點,雙手完整入鏡。';
+  else if (recent.length < 5 || recent.slice(-5).some(x => !x)) msg = '🟡 偵測中…請保持手在畫面內。';
+  else { msg = '🟢 骨架穩定,身體對齊虛線輪廓後即可按「開始錄影」。'; type = 'good'; }
+  if (msg !== badgeText) { badgeText = msg; setStatus('trackBadge', msg, type); }
+}
+function drawOverlay(res) {
+  sizeOverlay(); const W = overlay.width, H = overlay.height; octx.clearRect(0, 0, W, H);
+  if (!showGuide) return;
+  drawGuide(W, H); if (res) drawHands(res, W, H);
+}
+let previewOn = false;
+async function previewLoop() { // 開啟攝影機後持續偵測並畫骨架(錄影中改由錄影迴圈繪製,避免重複偵測)
+  if (previewOn) return; previewOn = true;
+  const v = $('cameraVideo'), c = document.createElement('canvas'), x = c.getContext('2d', { willReadFrequently: true });
+  while (stream) {
+    if (!capturing && v.videoWidth && v.readyState >= 2) {
+      let res = null;
+      if (model) { c.width = v.videoWidth; c.height = v.videoHeight; x.drawImage(v, 0, 0, c.width, c.height); try { res = model.detect(c); } catch (e) {} }
+      drawOverlay(res); if (model) updateBadge(res);
+    }
+    await sleep(100);
+  }
+  previewOn = false; octx.clearRect(0, 0, overlay.width, overlay.height);
+}
 
 /* 範本影片:逐格 seek 取樣(一般 mp4 可靠;學生端改為即時擷取,不再錄影後 seek) */
 const seek = (v, t) => new Promise(r => { const to = setTimeout(r, 2000); v.onseeked = () => { clearTimeout(to); r(); }; v.currentTime = t; });
@@ -776,7 +884,8 @@ $('questionSelect').addEventListener('change', async () => {
 $('cameraStart').onclick = async () => {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
-    $('cameraVideo').srcObject = stream; setStatus('recordStatus', '攝影機已開啟。請確認雙手完整入鏡。', 'good');
+    $('cameraVideo').srcObject = stream; setStatus('recordStatus', '攝影機已開啟。請對齊輪廓框,並確認骨架穩定跟著手動。', 'good');
+    $('cameraVideo').onloadedmetadata = sizeOverlay; previewLoop();
     initModel().catch(() => {}); // 先在背景載入模型
   } catch (e) { setStatus('recordStatus', '無法開啟攝影機:' + e.message, 'bad'); }
 };
@@ -793,15 +902,15 @@ $('recordStart').onclick = async () => {
   const t0 = performance.now();
   while (capturing && performance.now() - t0 < CFG.STU_MAX * 1000) {
     const t = performance.now(); x.drawImage(v, 0, 0, c.width, c.height);
-    const f = toFrame(model.detect(c)); stuFrames.push(f);
+    const res = model.detect(c), f = toFrame(res); stuFrames.push(f); drawOverlay(res);
     setStatus('recordStatus', `錄製中 ${((t - t0) / 1000).toFixed(1)} 秒・${has(f) ? '已偵測到手' : '未偵測到手'}・完成請按停止`);
     await sleep(Math.max(0, CFG.STEP * 1000 - (performance.now() - t)));
   }
   capturing = false; $('recordStart').disabled = false; $('recordStop').disabled = true;
-  stuFrames = trim(stuFrames);
+  stuFrames = trimStatic(trim(stuFrames));
   const ok = stuFrames.length >= 3;
   $('analyzeBtn').disabled = !ok; $('retryBtn').disabled = false;
-  setStatus('recordStatus', ok ? `錄製完成(${stuFrames.length} 個有效時間點),可以開始分析。` : '幾乎沒有偵測到手,請調整光線與位置後重錄。', ok ? 'good' : 'bad');
+  setStatus('recordStatus', ok ? `錄製完成(${stuFrames.length} 個有效時間點${cutNote()}),可以開始分析。` : '幾乎沒有偵測到手,請調整光線與位置後重錄。', ok ? 'good' : 'bad');
 };
 $('recordStop').onclick = () => { capturing = false; };
 // 手機/平板:呼叫系統相機錄影,錄完回傳影片檔,再於本機分析關鍵點(不上傳影片)
@@ -813,10 +922,10 @@ $('nativeFile').onchange = async e => {
     setStatus('recordStatus', '正在分析錄好的影片...');
     const v = await loadVideo(url);
     if (!v.videoWidth) throw new Error('這不是影片檔,請重新錄影。');
-    stuFrames = trim(await extractFromVideo(v, CFG.STU_MAX, 'recordStatus'));
+    stuFrames = trimStatic(await extractFromVideo(v, CFG.STU_MAX, 'recordStatus'));
     const ok = stuFrames.length >= 3;
     $('analyzeBtn').disabled = !ok; $('retryBtn').disabled = false;
-    setStatus('recordStatus', ok ? `影片分析完成(${stuFrames.length} 個有效時間點),可以按「分析手語動作」。` : '幾乎沒有偵測到手,請調整光線與位置後重錄。', ok ? 'good' : 'bad');
+    setStatus('recordStatus', ok ? `影片分析完成(${stuFrames.length} 個有效時間點${cutNote()}),可以按「分析手語動作」。` : '幾乎沒有偵測到手,請調整光線與位置後重錄。', ok ? 'good' : 'bad');
   } catch (err) { stuFrames = null; setStatus('recordStatus', '影片處理失敗:' + err.message, 'bad'); }
   finally { URL.revokeObjectURL(url); }
 };
@@ -831,7 +940,7 @@ $('analyzeBtn').onclick = () => {
   const q = cur(); if (!q) { alert('請先選擇題目。'); return; }
   if (!template?.length) { alert('此題尚未建立 AI 標準範本。教師需先用 YouTube 或上傳影片建立範本。'); return; }
   try {
-    latest = score(template, stuFrames);
+    latest = score(motionTrim(template), stuFrames); // 範本也用同一套規則裁頭尾,兩邊起訖點才一致
     $('similarity').textContent = latest.similarity + '%'; $('scoreBar').style.width = latest.similarity + '%';
     $('handScore').textContent = '手型:' + latest.handScore; $('positionScore').textContent = '位置:' + latest.positionScore; $('trajectoryScore').textContent = '軌跡:' + latest.trajectoryScore;
     setStatus('feedback', latest.feedback); $('resultPanel').classList.remove('hidden'); setStatus('recordStatus', '分析完成。', 'good');
