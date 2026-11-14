@@ -236,6 +236,22 @@
     .opt h3{display:flex;align-items:center;gap:8px;margin:0 0 8px}
     .opt button{width:100%}
     .opt .muted{margin:10px 0 0}
+    input[type=checkbox]{width:22px;height:22px;padding:0;margin:0;flex:none;accent-color:var(--blue);cursor:pointer}
+    .btnRow.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .qTools{display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:4px}
+    details.cat{border:2px solid var(--line);border-radius:14px;margin:10px 0;background:#fff;overflow:hidden}
+    details.cat[open]{border-color:#c3d5f0}
+    details.cat>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 14px;background:#f1f6fd;font-weight:800;color:var(--ink-soft);user-select:none}
+    details.cat>summary::-webkit-details-marker{display:none}
+    details.cat>summary::after{content:"▸";margin-left:auto;font-size:15px;color:var(--blue);transition:transform .15s}
+    details.cat[open]>summary::after{transform:rotate(90deg)}
+    details.cat>summary:hover{background:#e7f0fc}
+    .catName{font-size:15.5px}
+    .qrow{display:flex;align-items:center;gap:12px;margin:0!important;border:0!important;border-top:1px solid var(--line)!important;border-radius:0!important}
+    .qrow .qinfo{flex:1;min-width:0}
+    .qrow .qinfo .muted{margin:2px 0 0}
+    .qrow .qbtns{display:flex;gap:8px;flex:none}
+    @media(max-width:650px){.btnRow.four{grid-template-columns:repeat(2,minmax(0,1fr))}.qTools{grid-template-columns:1fr}.qrow{flex-wrap:wrap}.qrow .qbtns{width:100%}.qrow .qbtns button{flex:1}}
     @media(max-width:650px){.btnRow{grid-template-columns:1fr}.btnRow.two{grid-template-columns:1fr}.row>*{min-width:100%}}
   </style>
 </head>
@@ -262,6 +278,9 @@
     </div>
     <div class="panel">
       <h2>選擇練習題目</h2>
+      <label>題目分類</label>
+      <select id="studentCat"><option value="">全部分類</option></select>
+      <label>手語題目</label>
       <select id="questionSelect"><option value="">載入題庫中...</option></select>
       <div id="questionInfo" class="muted">請先選擇題目。</div>
       <label>比對寬鬆度</label>
@@ -319,6 +338,7 @@
         <h2>新增／編輯手語題目</h2>
         <input id="editId" type="hidden">
         <label>手語詞彙</label><input id="word" placeholder="例如：謝謝">
+        <label>分類（選填，可輸入新分類或選既有分類）</label><input id="category" list="catList" placeholder="例如：問候語、家人、數字"><datalist id="catList"></datalist>
         <label>YouTube 影片網址（選填，學生端也會播放這支影片）</label><input id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=...">
         <div class="grid">
           <div><label>影片起始秒數</label><input id="startSec" type="number" min="0" value="0"></div>
@@ -345,7 +365,20 @@
       </div>
       <div class="panel">
         <h2>題庫管理</h2>
+        <div class="qTools">
+          <input id="qSearch" placeholder="🔍 搜尋手語詞彙">
+          <select id="qCatFilter"><option value="">全部分類</option></select>
+        </div>
+        <div class="btnRow four">
+          <button id="qExpandAll" class="secondary">📂 全部展開</button>
+          <button id="qCollapseAll" class="secondary">📁 全部收合</button>
+          <button id="qSelectAll" class="secondary">☑ 全選（目前顯示）</button>
+          <button id="qSelectNone" class="secondary">☐ 全不選（目前顯示）</button>
+        </div>
+        <div id="qCount" class="status">載入中...</div>
         <div id="questionList"></div>
+        <button id="savePractice" class="success" style="width:100%;margin-top:6px" disabled>💾 儲存「開放給學生練習」的勾選</button>
+        <p class="muted">勾選的題目才會出現在學生端的題目清單;未勾選的題目會隱藏,但資料與範本都保留。新增的題目預設為勾選。</p>
       </div>
     </div>
   </section>
@@ -377,7 +410,7 @@ const setStatus = (id, msg, type = '') => { const e = $(id); e.textContent = msg
 const LS = { get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
 
 // 部署 Code.gs 後,把網頁應用程式的 /exec 網址貼在這裡(獨立網頁版必填)
-const API_URL = 'https://script.google.com/macros/s/AKfycbw6wmaCB3Jjn0myKLfHubX7XIUAyt8NY4xnYkn3DyD-0QOU0MS_aDaejXoJj07DvTdh/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbyv1bpV0ujEOxoi1H_m4Vh4KezmQYo9diEslOVnYB1iCy4G4bAUGcilKD_JdUAPswOZ/exec';
 async function gasCall(name, payload) {
   if (typeof google !== 'undefined' && google.script && google.script.run) { // 相容舊的 Apps Script 內嵌模式
     return new Promise((ok, no) => google.script.run.withSuccessHandler(ok).withFailureHandler(e => no(new Error(e.message || e)))[name](payload));
@@ -628,7 +661,7 @@ function score(ref, stu) {
 const cur = () => data.questions.find(q => q.id === $('questionSelect').value);
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 async function loadData() {
-  try { data.questions = await gasCall('getQuestions'); renderQuestions(); renderQuestionList(); }
+  try { data.questions = await gasCall('getQuestions'); practiceSel = new Set(data.questions.filter(q => q.active !== false).map(q => q.id)); practiceDirty = false; renderQuestions(); renderQuestionList(); }
   catch (e) { $('questionSelect').innerHTML = '<option>請確認 Apps Script 已完成 setup()</option>'; console.error(e); }
 }
 async function loadRecords() {
@@ -636,28 +669,83 @@ async function loadRecords() {
   if (!authorized) { alert('練習紀錄含學生姓名,請先於「教師管理」登入。'); return; }
   try { data.attempts = await gasCall('getAttempts', { pin }); renderRecords(); } catch (e) { alert(e.message); }
 }
-function renderQuestions() {
+const UNCAT = '未分類';
+const catOf = q => (q.category || '').trim() || UNCAT;
+const catSort = (a, b) => a === UNCAT ? 1 : b === UNCAT ? -1 : a.localeCompare(b, 'zh-Hant');
+let practiceSel = new Set(), practiceDirty = false, visibleIds = [];
+let collapsedCats = new Set(); try { collapsedCats = new Set(JSON.parse(LS.get('collapsedCats') || '[]')); } catch (e) {}
+const saveCollapsed = () => LS.set('collapsedCats', JSON.stringify([...collapsedCats]));
+
+function renderQuestions() { // 學生端:只列出老師勾選開放的題目,可依分類篩選
+  const act = data.questions.filter(q => q.active !== false);
+  const sc = $('studentCat'), keepC = sc.value, cats = [...new Set(act.map(catOf))].sort(catSort);
+  sc.innerHTML = '<option value="">全部分類</option>' + cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  sc.value = cats.includes(keepC) ? keepC : '';
   const s = $('questionSelect'), keep = s.value; s.innerHTML = '<option value="">請選擇手語題目</option>';
-  data.questions.forEach(q => { const o = document.createElement('option'); o.value = q.id; o.textContent = q.word + (q.frames ? '' : '(尚無範本)'); s.appendChild(o); });
-  s.value = keep;
+  const groups = {}; act.filter(q => !sc.value || catOf(q) === sc.value).forEach(q => (groups[catOf(q)] = groups[catOf(q)] || []).push(q));
+  const names = Object.keys(groups).sort(catSort), useGroup = names.length > 1;
+  names.forEach(n => {
+    const parent = useGroup ? Object.assign(document.createElement('optgroup'), { label: n }) : s;
+    groups[n].forEach(q => { const o = document.createElement('option'); o.value = q.id; o.textContent = q.word + (q.frames ? '' : '(尚無範本)'); parent.appendChild(o); });
+    if (useGroup) s.appendChild(parent);
+  });
+  const ok = [...s.options].some(o => o.value === keep);
+  s.value = ok ? keep : '';
+  if (!ok && keep) s.dispatchEvent(new Event('change')); // 原本選的題目被隱藏或換分類,清除畫面狀態
+}
+function refreshCounts() {
+  document.querySelectorAll('#questionList details.cat').forEach(det => {
+    const cbs = [...det.querySelectorAll('.qcb')], on = cbs.filter(c => c.checked).length, g = det.querySelector('.gcb');
+    det.querySelector('.catCount').textContent = `${on} / ${cbs.length} 題開放`;
+    g.checked = cbs.length > 0 && on === cbs.length; g.indeterminate = on > 0 && on < cbs.length;
+  });
+  const n = data.questions.filter(q => practiceSel.has(q.id)).length;
+  setStatus('qCount', `學生可練習:已勾選 ${n} / 共 ${data.questions.length} 題` + (practiceDirty ? '（尚未儲存,請按下方「儲存」）' : ''), practiceDirty ? '' : 'good');
+  $('savePractice').disabled = !practiceDirty;
 }
 function renderQuestionList() {
   const box = $('questionList'); box.innerHTML = '';
-  data.questions.forEach(q => {
-    const d = document.createElement('div'); d.className = 'question';
-    d.innerHTML = `<b>${escapeHtml(q.word)}</b> <span class="pill">${q.frames ? '已有AI範本' : '尚無AI範本'}</span><div class="muted">${q.youtubeUrl ? '有 YouTube 影片' : '無 YouTube 影片'}・${q.frames} 個特徵時間點</div>`;
-    const edit = document.createElement('button'); edit.className = 'secondary'; edit.textContent = '編輯';
-    edit.onclick = async () => {
-      $('editId').value = q.id; $('word').value = q.word; $('youtubeUrl').value = q.youtubeUrl; $('startSec').value = q.startSec; $('endSec').value = q.endSec;
-      setStatus('templateStatus', '載入既有標準特徵...');
-      try { template = await gasCall('getFeatures', { id: q.id }); setStatus('templateStatus', template.length ? '已載入既有標準特徵。' : '此題尚無標準特徵。'); } catch (e) { setStatus('templateStatus', e.message, 'bad'); }
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-    const del = document.createElement('button'); del.className = 'danger'; del.textContent = '刪除'; del.style.marginLeft = '8px';
-    del.onclick = async () => { if (!confirm('確定刪除此題?')) return; try { await gasCall('deleteQuestion', { pin: $('teacherPin').value, id: q.id }); await loadData(); } catch (e) { alert(e.message); } };
-    d.append(edit, del); box.appendChild(d);
+  const allCats = [...new Set(data.questions.map(catOf))].sort(catSort);
+  const f = $('qCatFilter'), keepF = f.value;
+  f.innerHTML = '<option value="">全部分類</option>' + allCats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  f.value = allCats.includes(keepF) ? keepF : '';
+  $('catList').innerHTML = allCats.filter(c => c !== UNCAT).map(c => `<option value="${escapeHtml(c)}">`).join('');
+  const kw = $('qSearch').value.trim().toLowerCase(), cf = f.value;
+  const shown = data.questions.filter(q => (!cf || catOf(q) === cf) && (!kw || q.word.toLowerCase().includes(kw)));
+  visibleIds = shown.map(q => q.id);
+  const groups = {}; shown.forEach(q => (groups[catOf(q)] = groups[catOf(q)] || []).push(q));
+  Object.keys(groups).sort(catSort).forEach(name => {
+    const det = document.createElement('details'); det.className = 'cat'; det.open = !collapsedCats.has(name);
+    det.addEventListener('toggle', () => { if (det.open) collapsedCats.delete(name); else collapsedCats.add(name); saveCollapsed(); });
+    const sum = document.createElement('summary');
+    const gcb = document.createElement('input'); gcb.type = 'checkbox'; gcb.className = 'gcb'; gcb.title = '整個分類全選／取消';
+    gcb.onclick = e => e.stopPropagation();
+    gcb.onchange = () => { groups[name].forEach(q => gcb.checked ? practiceSel.add(q.id) : practiceSel.delete(q.id)); practiceDirty = true; det.querySelectorAll('.qcb').forEach(c => c.checked = gcb.checked); refreshCounts(); };
+    const nm = document.createElement('span'); nm.className = 'catName'; nm.textContent = name;
+    const ct = document.createElement('span'); ct.className = 'pill catCount';
+    sum.append(gcb, nm, ct); det.appendChild(sum);
+    groups[name].forEach(q => {
+      const d = document.createElement('div'); d.className = 'question qrow';
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.className = 'qcb'; cb.checked = practiceSel.has(q.id); cb.title = '勾選＝開放給學生練習';
+      cb.onchange = () => { if (cb.checked) practiceSel.add(q.id); else practiceSel.delete(q.id); practiceDirty = true; refreshCounts(); };
+      const info = document.createElement('div'); info.className = 'qinfo';
+      info.innerHTML = `<b>${escapeHtml(q.word)}</b> <span class="pill">${q.frames ? '已有AI範本' : '尚無AI範本'}</span><div class="muted">${q.youtubeUrl ? '有 YouTube 影片' : '無 YouTube 影片'}・${q.frames} 個特徵時間點</div>`;
+      const bt = document.createElement('div'); bt.className = 'qbtns';
+      const edit = document.createElement('button'); edit.className = 'secondary'; edit.textContent = '✏ 編輯';
+      edit.onclick = async () => {
+        $('editId').value = q.id; $('word').value = q.word; $('category').value = q.category || ''; $('youtubeUrl').value = q.youtubeUrl; $('startSec').value = q.startSec; $('endSec').value = q.endSec;
+        setStatus('templateStatus', '載入既有標準特徵...');
+        try { template = await gasCall('getFeatures', { id: q.id }); setStatus('templateStatus', template.length ? '已載入既有標準特徵。' : '此題尚無標準特徵。'); } catch (e) { setStatus('templateStatus', e.message, 'bad'); }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+      const del = document.createElement('button'); del.className = 'danger'; del.textContent = '🗑 刪除';
+      del.onclick = async () => { if (!confirm('確定刪除此題?')) return; try { await gasCall('deleteQuestion', { pin: $('teacherPin').value, id: q.id }); await loadData(); } catch (e) { alert(e.message); } };
+      bt.append(edit, del); d.append(cb, info, bt); det.appendChild(d);
+    });
+    box.appendChild(det);
   });
-  if (!data.questions.length) box.textContent = '目前尚無題目。';
+  if (!shown.length) box.textContent = data.questions.length ? '沒有符合的題目。' : '目前尚無題目。';
+  refreshCounts();
 }
 function renderRecords() {
   const body = $('recordsBody'); body.innerHTML = '';
@@ -790,14 +878,26 @@ $('buildFromYoutube').onclick = async () => {
 };
 $('saveQuestion').onclick = async () => {
   if (!authorized) { alert('請先進入教師管理。'); return; }
-  const payload = { pin: $('teacherPin').value, id: $('editId').value, word: $('word').value, youtubeUrl: $('youtubeUrl').value, startSec: $('startSec').value, endSec: $('endSec').value, features: template || [] };
+  const payload = { pin: $('teacherPin').value, id: $('editId').value, word: $('word').value, category: $('category').value, youtubeUrl: $('youtubeUrl').value, startSec: $('startSec').value, endSec: $('endSec').value, features: template || [] };
   try {
     await gasCall('saveQuestion', payload);
-    ['editId', 'word', 'youtubeUrl', 'referenceFile'].forEach(id => $(id).value = ''); template = null;
+    ['editId', 'word', 'category', 'youtubeUrl', 'referenceFile'].forEach(id => $(id).value = ''); template = null;
     $('ytTeacherFrame').innerHTML = ''; $('ytTeacherFrame').classList.add('hidden'); setStatus('templateStatus', '題目已儲存。', 'good'); await loadData(); alert('題目已儲存。');
   } catch (e) { alert('儲存失敗:' + e.message); }
 };
 $('refreshRecords').onclick = loadRecords;
+$('studentCat').onchange = renderQuestions;
+$('qSearch').oninput = renderQuestionList; $('qCatFilter').onchange = renderQuestionList;
+$('qExpandAll').onclick = () => { collapsedCats.clear(); saveCollapsed(); renderQuestionList(); };
+$('qCollapseAll').onclick = () => { data.questions.forEach(q => collapsedCats.add(catOf(q))); saveCollapsed(); renderQuestionList(); };
+$('qSelectAll').onclick = () => { visibleIds.forEach(id => practiceSel.add(id)); practiceDirty = true; renderQuestionList(); };
+$('qSelectNone').onclick = () => { visibleIds.forEach(id => practiceSel.delete(id)); practiceDirty = true; renderQuestionList(); };
+$('savePractice').onclick = async () => {
+  if (!authorized) { alert('請先進入教師管理。'); return; }
+  const btn = $('savePractice'); btn.disabled = true;
+  try { const r = await gasCall('setPractice', { pin: $('teacherPin').value, activeIds: [...practiceSel] }); await loadData(); alert(`已儲存:學生可練習 ${r.count} 題。`); }
+  catch (e) { alert('儲存失敗:' + e.message); btn.disabled = !practiceDirty; }
+};
 loadData();
 </script>
 </body>
