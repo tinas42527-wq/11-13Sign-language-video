@@ -428,7 +428,23 @@ function toFrame(res) {
   return f;
 }
 const has = f => f[65] || f[PER + 65];
-function trim(fr) { let a = 0, b = fr.length; while (a < b && !has(fr[a])) a++; while (b > a && !has(fr[b - 1])) b--; return fr.slice(a, b); }
+function fillGaps(fr, maxGap = 3) { // 偵測偶爾漏掉的格(手在邊緣、動作模糊):前後都有手、缺口不超過 maxGap 格時,以內插補上
+  const out = fr.map(f => f.slice());
+  for (let hd = 0; hd < 2; hd++) {
+    const b = hd * PER; let p = -1;
+    for (let i = 0; i < out.length; i++) {
+      if (!out[i][b + 65]) continue;
+      if (p >= 0 && i - p > 1 && i - p - 1 <= maxGap) {
+        for (let j = p + 1; j < i; j++) { const t = (j - p) / (i - p);
+          for (let k = 0; k < 65; k++) out[j][b + k] = r2(out[p][b + k] + (out[i][b + k] - out[p][b + k]) * t);
+          out[j][b + 65] = 1; }
+      }
+      p = i;
+    }
+  }
+  return out;
+}
+function trim(fr) { let a = 0, b = fr.length; while (a < b && !has(fr[a])) a++; while (b > a && !has(fr[b - 1])) b--; return fillGaps(fr.slice(a, b)); }
 
 /* 範本影片:逐格 seek 取樣(一般 mp4 可靠;學生端改為即時擷取,不再錄影後 seek) */
 const seek = (v, t) => new Promise(r => { const to = setTimeout(r, 2000); v.onseeked = () => { clearTimeout(to); r(); }; v.currentTime = t; });
