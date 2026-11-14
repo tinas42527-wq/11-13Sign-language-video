@@ -533,12 +533,22 @@ async function extractFromYoutube(tag) {
 /* ---------- 比對寬鬆度 ---------- */
 // K 越小越寬鬆;TOL=容許誤差(小於此值不扣分);MISS=一手缺漏的扣分;BAND=DTW 容許的時間伸縮比例;MIRROR=也接受左右手互換
 const LEVELS = {
-  easy:   { label: '寬鬆', K: 1.25, MISS: 0.8, TOL: { shape: .10, pos: .20, traj: .20 }, W: { shape: .5, pos: .1,  traj: .4  }, BAND: .5, MIRROR: true },
-  normal: { label: '標準', K: 1.5, MISS: 1.2, TOL: { shape: .05, pos: .10, traj: .10 }, W: { shape: .5, pos: .15, traj: .35 }, BAND: .4, MIRROR: false },
-  strict: { label: '嚴格', K: 1.8, MISS: 1.5, TOL: { shape: 0,   pos: 0,   traj: 0   }, W: { shape: .5, pos: .2,  traj: .3  }, BAND: .3, MIRROR: false }
+  easy:   { label: '寬鬆', MOTION: .7, BLEND: .6, K: 1.25, MISS: 0.8, TOL: { shape: .10, pos: .20, traj: .20 }, W: { shape: .5, pos: .1,  traj: .4  }, BAND: .5, MIRROR: true },
+  normal: { label: '標準', MOTION: .9, BLEND: .5, K: 1.5, MISS: 1.2, TOL: { shape: .05, pos: .10, traj: .10 }, W: { shape: .5, pos: .15, traj: .35 }, BAND: .4, MIRROR: false },
+  strict: { label: '嚴格', MOTION: 1.1, BLEND: .5, K: 1.8, MISS: 1.5, TOL: { shape: 0,   pos: 0,   traj: 0   }, W: { shape: .5, pos: .2,  traj: .3  }, BAND: .3, MIRROR: false }
 };
 let levelKey = 'easy';
 function applyLevel(k) { levelKey = LEVELS[k] ? k : 'easy'; Object.assign(CFG, LEVELS[levelKey]); }
+function pathLen(fr) { // 每隻手腕的移動總長(畫面比例),用來分辨「有沒有真的在動」
+  return [0, 1].map(h => { const b = h * PER; let L = 0, p = null;
+    fr.forEach(f => { if (!f[b + 65]) return; if (p) L += Math.hypot(f[b + 63] - p[0], f[b + 64] - p[1]); p = [f[b + 63], f[b + 64]]; });
+    return L; });
+}
+function motionPen(ref, stu) { // 動作幅度差太多(例如手停著不動)要扣分;0=相近,1=差很多
+  const a = pathLen(ref), b = pathLen(stu); let worst = 0;
+  for (let h = 0; h < 2; h++) { const x = Math.max(a[h], .2), y = Math.max(b[h], .2); worst = Math.max(worst, 1 - Math.min(x, y) / Math.max(x, y)); }
+  return worst;
+}
 function mirrorFrames(fr) { // 左右手互換並水平翻轉(讓用另一隻手做動作的同學也能被接受)
   return fr.map(f => { const g = new Array(f.length).fill(0);
     for (let h = 0; h < 2; h++) { const s = (1 - h) * PER, d = h * PER;
@@ -591,14 +601,16 @@ function align(a, b) {
 }
 function score(ref, stu) {
   if (ref.length < 3 || stu.length < 3) throw new Error('偵測到的手部動作太少,請確認雙手入鏡、光線充足後重錄。');
-  let res = align(ref, stu);
-  if (CFG.MIRROR) { const alt = align(ref, mirrorFrames(stu)); if (alt.total < res.total) res = alt; } // 用另一隻手也算
-  const { total, path } = res;
+  let res = align(ref, stu), used = stu;
+  if (CFG.MIRROR) { const ms = mirrorFrames(stu), alt = align(ref, ms); if (alt.total < res.total) { res = alt; used = ms; } } // 用另一隻手也算
+  const pen = motionPen(ref, used), { path } = res, total = res.total + CFG.W.traj * CFG.MOTION * pen;
   if (!Number.isFinite(total) || !path.length) throw new Error('無法比對,請重錄。');
   const avg = k => path.reduce((s, c) => s + c[k], 0) / path.length;
   const sc = c => Math.max(0, Math.min(100, Math.round(100 * Math.exp(-CFG.K * c))));
   const handAvg = [0, 1].map(h => { const v = path.map(c => c.hs[h]).filter(x => x !== null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; });
-  const similarity = sc(total), handScore = sc(avg('sh')), positionScore = sc(avg('ps')), trajectoryScore = sc(avg('tj'));
+  const handScore = sc(avg('sh')), positionScore = sc(avg('ps')), trajectoryScore = sc(avg('tj') + CFG.MOTION * pen);
+  // 總分 = 整體相似度 與「手型/軌跡較弱的一項」混合:任何一項明顯做錯,總分就不會太高
+  const similarity = Math.round(CFG.BLEND * sc(total) + (1 - CFG.BLEND) * Math.min(handScore, trajectoryScore));
   const parts = [['手型', handScore, '請對照範本調整手指形狀與手掌朝向'], ['位置', positionScore, '請注意手的高低與離身體的距離'], ['軌跡', trajectoryScore, '請注意移動方向與路徑大小']];
   const worst = parts.reduce((a, b) => b[1] < a[1] ? b : a), best = parts.reduce((a, b) => b[1] > a[1] ? b : a);
   const mark = similarity >= 85 ? '🌟 太棒了!' : similarity >= 70 ? '👍 很不錯!' : similarity >= 50 ? '💪 有進步!' : '🌱 好的開始!';
