@@ -285,6 +285,7 @@
       <div id="questionInfo" class="muted">請先選擇題目。</div>
       <label>比對寬鬆度</label>
       <select id="matchLevel">
+        <option value="ultra">🌈 超寬鬆（剛接觸手語）：只要大致像就給鼓勵</option>
         <option value="easy">🌱 寬鬆（新手建議）：容許手型、位置、速度有些差異</option>
         <option value="normal">🌿 標準：一般練習</option>
         <option value="strict">🌳 嚴格（進階）：要求接近範本</option>
@@ -566,6 +567,7 @@ async function extractFromYoutube(tag) {
 /* ---------- 比對寬鬆度 ---------- */
 // K 越小越寬鬆;TOL=容許誤差(小於此值不扣分);MISS=一手缺漏的扣分;BAND=DTW 容許的時間伸縮比例;MIRROR=也接受左右手互換
 const LEVELS = {
+  ultra:  { label: '超寬鬆', MOTION: .6, BLEND: .65, K: 1.0, MISS: 0.5, TOL: { shape: .15, pos: .35, traj: .35 }, W: { shape: .55, pos: .05, traj: .4 }, BAND: .6, MIRROR: true },
   easy:   { label: '寬鬆', MOTION: .7, BLEND: .6, K: 1.25, MISS: 0.8, TOL: { shape: .10, pos: .20, traj: .20 }, W: { shape: .5, pos: .1,  traj: .4  }, BAND: .5, MIRROR: true },
   normal: { label: '標準', MOTION: .9, BLEND: .5, K: 1.5, MISS: 1.2, TOL: { shape: .05, pos: .10, traj: .10 }, W: { shape: .5, pos: .15, traj: .35 }, BAND: .4, MIRROR: false },
   strict: { label: '嚴格', MOTION: 1.1, BLEND: .5, K: 1.8, MISS: 1.5, TOL: { shape: 0,   pos: 0,   traj: 0   }, W: { shape: .5, pos: .2,  traj: .3  }, BAND: .3, MIRROR: false }
