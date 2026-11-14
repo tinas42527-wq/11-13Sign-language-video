@@ -319,14 +319,22 @@
         <h2>新增／編輯手語題目</h2>
         <input id="editId" type="hidden">
         <label>手語詞彙</label><input id="word" placeholder="例如：謝謝">
-        <label>YouTube 影片網址（選填，學生端播放用的標準教學影片）</label><input id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=...">
+        <label>YouTube 影片網址（選填，學生端也會播放這支影片）</label><input id="youtubeUrl" placeholder="https://www.youtube.com/watch?v=...">
         <div class="grid">
           <div><label>影片起始秒數</label><input id="startSec" type="number" min="0" value="0"></div>
           <div><label>影片結束秒數</label><input id="endSec" type="number" min="0" value="0"></div>
         </div>
-        <label>標準動作影片（AI 範本來源）</label>
+        <label>標準動作影片來源（二擇一）</label>
         <div class="opt">
-          <h3>上傳老師示範影片</h3>
+          <h3><span class="stepTag">A</span>用 YouTube 影片</h3>
+          <div id="ytTeacherFrame" class="hidden"></div>
+          <canvas id="ytDebug" class="hidden" style="width:100%;max-width:480px;border-radius:12px;margin:8px 0;background:#000"></canvas>
+          <div id="ytDebugNote" class="muted"></div>
+          <button id="buildFromYoutube" class="secondary">▶ 用 YouTube 影片建立範本（擷取本分頁畫面）</button>
+          <p class="muted">填好網址與起迄秒數（純秒數,例如 12 到 16）後按按鈕，在彈出視窗選「此分頁」並分享。播放器只會在擷取時暫時出現（最長 10 秒），完成後自動收起；過程中請勿切換分頁或捲動頁面。</p>
+        </div>
+        <div class="opt">
+          <h3><span class="stepTag">B</span>上傳影片檔</h3>
           <input id="referenceFile" type="file" accept="video/*">
           <button id="buildTemplate" class="secondary" style="margin-top:10px">📂 分析上傳的影片並建立範本</button>
           <p class="muted">請使用老師自行拍攝或已取得使用授權的影片。系統只在瀏覽器本機分析並儲存關鍵點特徵，不會儲存或上傳原始影片。</p>
@@ -460,6 +468,67 @@ async function extractFromVideo(v, maxSec, tag) {
 }
 
 /* ---------- YouTube 標準影片:播放指定片段並擷取本分頁畫面 ---------- */
+let ytApi = null, ytStat = '';
+function loadYtApi() {
+  if (ytApi) return ytApi;
+  ytApi = new Promise((ok, no) => {
+    if (window.YT && window.YT.Player) return ok();
+    window.onYouTubeIframeAPIReady = ok;
+    const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api';
+    s.onerror = () => { ytApi = null; no(new Error('無法載入 YouTube 播放器,請檢查網路。')); };
+    document.head.appendChild(s);
+  });
+  return ytApi;
+}
+async function extractFromYoutube(tag) {
+  const id = extractYoutubeId($('youtubeUrl').value.trim());
+  if (!id) throw new Error('請先輸入有效的 YouTube 網址。');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) throw new Error('此瀏覽器不支援畫面擷取,請使用電腦版 Chrome 或 Edge。');
+  const start = Math.max(0, Number($('startSec').value) || 0), end = Number($('endSec').value) || 0;
+  if (end > start && end - start < 0.8) throw new Error(`起迄秒數只相差 ${r2(end - start)} 秒,太短。這兩格要填「純秒數」:例如影片第 12 秒到第 16 秒,就填 12 和 16(不是 0.12 或 0:12)。`);
+  const len = end > start ? Math.min(end - start, CFG.TPL_MAX) : CFG.TPL_MAX;
+  setStatus(tag, '正在載入 YouTube 播放器與 AI 模型...');
+  await loadYtApi(); const m = await initModel();
+  const box = $('ytTeacherFrame'); box.classList.remove('hidden'); box.innerHTML = '<div id="ytPlayer"></div>';
+  const player = await new Promise((ok, no) => {
+    const p = new YT.Player('ytPlayer', {
+      videoId: id, width: '100%', height: Math.round(box.clientWidth * 9 / 16) || 360,
+      playerVars: { start: Math.floor(start), controls: 0, rel: 0, modestbranding: 1, playsinline: 1, disablekb: 1, iv_load_policy: 3, fs: 0 },
+      events: { onReady: () => ok(p), onError: e => no(new Error('YouTube 無法播放此影片(錯誤碼 ' + e.data + '),可能被擁有者禁止嵌入。')) }
+    });
+  });
+  box.scrollIntoView({ block: 'center' });
+  setStatus(tag, '請在彈出視窗選擇「此分頁」並按分享。');
+  let ms;
+  try { ms = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 15 }, audio: false, preferCurrentTab: true }); }
+  catch (e) { throw new Error('無法擷取畫面(' + (e.name || e.message) + ')。若是被拒絕請重按一次;若在 Apps Script 內嵌頁面一直失敗,代表環境禁止畫面擷取,請改用上傳影片檔。'); }
+  try {
+    const track = ms.getVideoTracks()[0];
+    if ((track.getSettings().displaySurface || 'browser') !== 'browser') throw new Error('請選擇「此分頁」,不要選整個螢幕或其他視窗。');
+    const sv = document.createElement('video'); sv.muted = true; sv.playsInline = true; sv.srcObject = ms; await sv.play(); await sleep(600);
+    const c = document.createElement('canvas'), x = c.getContext('2d', { willReadFrequently: true }), out = [];
+    let hit = 0; ytStat = '';
+    player.mute(); player.seekTo(start, true); player.playVideo();
+    for (let w = 0; w < 80 && player.getPlayerState() !== 1; w++) await sleep(100); // 等待開始播放
+    if (player.getPlayerState() !== 1) throw new Error('影片無法開始播放。');
+    const iframe = box.querySelector('iframe'), t0 = performance.now();
+    while (performance.now() - t0 < (len + 3) * 1000) {
+      const t = performance.now(), cur = player.getCurrentTime();
+      if (cur - start >= len || player.getPlayerState() === 0) break;
+      const r = iframe.getBoundingClientRect(), kx = sv.videoWidth / window.innerWidth, ky = sv.videoHeight / window.innerHeight;
+      c.width = Math.max(2, Math.round(r.width * kx)); c.height = Math.max(2, Math.round(r.height * ky));
+      x.drawImage(sv, r.left * kx, r.top * ky, r.width * kx, r.height * ky, 0, 0, c.width, c.height);
+      const fr = toFrame(m.detect(c)); out.push(fr); if (has(fr)) hit++;
+      if (has(fr) || hit === 0) { const d = $('ytDebug'); d.width = c.width; d.height = c.height; d.getContext('2d').drawImage(c, 0, 0); } // 預覽:顯示實際擷取到的畫面
+      setStatus(tag, `擷取中 ${Math.max(0, cur - start).toFixed(1)} / ${len.toFixed(1)} 秒...(請勿切換分頁)`);
+      await sleep(Math.max(0, CFG.STEP * 1000 - (performance.now() - t)));
+    }
+    player.pauseVideo();
+    ytStat = `共擷取 ${out.length} 格,偵測到手 ${hit} 格`;
+    $('ytDebugNote').textContent = '擷取結果:' + ytStat + '。';
+    return trim(out);
+  } finally { ms.getTracks().forEach(t => t.stop()); }
+}
 
 /* ---------- 比對寬鬆度 ---------- */
 // K 越小越寬鬆;TOL=容許誤差(小於此值不扣分);MISS=一手缺漏的扣分;BAND=DTW 容許的時間伸縮比例;MIRROR=也接受左右手互換
@@ -709,13 +778,23 @@ $('buildTemplate').onclick = async () => {
   } catch (e) { template = null; setStatus('templateStatus', '建立失敗:' + e.message, 'bad'); }
   finally { URL.revokeObjectURL(url); }
 };
+$('buildFromYoutube').onclick = async () => {
+  const btn = $('buildFromYoutube'); btn.disabled = true; $('ytDebug').classList.add('hidden'); $('ytDebugNote').textContent = '';
+  try {
+    template = await extractFromYoutube('templateStatus');
+    if (template.length < 3) { $('ytDebug').classList.remove('hidden'); throw new Error('有效動作太短或偵測不到手,請確認起迄秒數對準手語動作,且影片中雙手清楚。(' + ytStat + ')。下方預覽是實際擷取到的畫面,可據此檢查。'); }
+    if (JSON.stringify(template).length > 49000) throw new Error('範本資料過大,請縮短片段。');
+    setStatus('templateStatus', `YouTube 範本建立成功:${template.length} 個時間點。請按「儲存題目」。`, 'good');
+  } catch (e) { template = null; setStatus('templateStatus', '建立失敗:' + e.message, 'bad'); }
+  finally { btn.disabled = false; const b = $('ytTeacherFrame'); b.innerHTML = ''; b.classList.add('hidden'); } // 擷取完成後收起播放器
+};
 $('saveQuestion').onclick = async () => {
   if (!authorized) { alert('請先進入教師管理。'); return; }
   const payload = { pin: $('teacherPin').value, id: $('editId').value, word: $('word').value, youtubeUrl: $('youtubeUrl').value, startSec: $('startSec').value, endSec: $('endSec').value, features: template || [] };
   try {
     await gasCall('saveQuestion', payload);
     ['editId', 'word', 'youtubeUrl', 'referenceFile'].forEach(id => $(id).value = ''); template = null;
-    setStatus('templateStatus', '題目已儲存。', 'good'); await loadData(); alert('題目已儲存。');
+    $('ytTeacherFrame').innerHTML = ''; $('ytTeacherFrame').classList.add('hidden'); setStatus('templateStatus', '題目已儲存。', 'good'); await loadData(); alert('題目已儲存。');
   } catch (e) { alert('儲存失敗:' + e.message); }
 };
 $('refreshRecords').onclick = loadRecords;
