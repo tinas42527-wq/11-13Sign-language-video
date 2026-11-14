@@ -242,7 +242,7 @@
 <body>
 <header><div class="wrap">
   <h1>高中台灣手語 AI 練習系統</h1>
-  <p>MediaPipe 關鍵點擷取・DTW 動作比對・自主練習</p>
+  <p>MediaPipe 關鍵點擷取・DTW 彈性動作比對・新手友善・自主練習</p>
 </div></header>
 <main>
   <div class="tabs">
@@ -264,6 +264,13 @@
       <h2>選擇練習題目</h2>
       <select id="questionSelect"><option value="">載入題庫中...</option></select>
       <div id="questionInfo" class="muted">請先選擇題目。</div>
+      <label>比對寬鬆度</label>
+      <select id="matchLevel">
+        <option value="easy">🌱 寬鬆（新手建議）：容許手型、位置、速度有些差異</option>
+        <option value="normal">🌿 標準：一般練習</option>
+        <option value="strict">🌳 嚴格（進階）：要求接近範本</option>
+      </select>
+      <div class="muted">剛開始學建議用「寬鬆」。分析後想換寬鬆度,選好後會自動重新計分。</div>
       <div id="youtubeArea" class="hidden">
         <label>YouTube 標準教學影片</label>
         <div id="youtubeFrame"></div>
@@ -507,6 +514,24 @@ async function extractFromYoutube(tag) {
   } finally { ms.getTracks().forEach(t => t.stop()); }
 }
 
+/* ---------- 比對寬鬆度 ---------- */
+// K 越小越寬鬆;TOL=容許誤差(小於此值不扣分);MISS=一手缺漏的扣分;BAND=DTW 容許的時間伸縮比例;MIRROR=也接受左右手互換
+const LEVELS = {
+  easy:   { label: '寬鬆', K: 1.25, MISS: 0.8, TOL: { shape: .10, pos: .20, traj: .20 }, W: { shape: .5, pos: .1,  traj: .4  }, BAND: .5, MIRROR: true },
+  normal: { label: '標準', K: 1.5, MISS: 1.2, TOL: { shape: .05, pos: .10, traj: .10 }, W: { shape: .5, pos: .15, traj: .35 }, BAND: .4, MIRROR: false },
+  strict: { label: '嚴格', K: 1.8, MISS: 1.5, TOL: { shape: 0,   pos: 0,   traj: 0   }, W: { shape: .5, pos: .2,  traj: .3  }, BAND: .3, MIRROR: false }
+};
+let levelKey = 'easy';
+function applyLevel(k) { levelKey = LEVELS[k] ? k : 'easy'; Object.assign(CFG, LEVELS[levelKey]); }
+function mirrorFrames(fr) { // 左右手互換並水平翻轉(讓用另一隻手做動作的同學也能被接受)
+  return fr.map(f => { const g = new Array(f.length).fill(0);
+    for (let h = 0; h < 2; h++) { const s = (1 - h) * PER, d = h * PER;
+      if (!f[s + 65]) continue;
+      for (let k = 0; k < 21; k++) { g[d + k * 3] = -f[s + k * 3]; g[d + k * 3 + 1] = f[s + k * 3 + 1]; g[d + k * 3 + 2] = -f[s + k * 3 + 2]; }
+      g[d + 63] = r2(1 - f[s + 63]); g[d + 64] = f[s + 64]; g[d + 65] = 1; }
+    return g; });
+}
+
 /* ---------- DTW 與分項評分 ---------- */
 function prep(fr) { // 每手相對於起點的位移(軌跡用)
   const st = [null, null];
@@ -525,15 +550,15 @@ function cell(fa, fb, pa, pb) {
     if (!A || !B) { hs[h] = CFG.MISS; sh += CFG.MISS; ps += CFG.MISS; tj += CFG.MISS; continue; } // 一方缺手要扣分
     let s = 0; const o = h * PER;
     for (let k = 0; k < 63; k++) { const d = fa[o + k] - fb[o + k]; s += d * d; }
-    hs[h] = Math.sqrt(s / 63); sh += hs[h];
-    ps += Math.hypot(A.x - B.x, A.y - B.y) * CFG.POS_GAIN;
-    tj += Math.hypot(A.rx - B.rx, A.ry - B.ry) * CFG.POS_GAIN;
+    hs[h] = Math.max(0, Math.sqrt(s / 63) - CFG.TOL.shape); sh += hs[h];
+    ps += Math.max(0, Math.hypot(A.x - B.x, A.y - B.y) * CFG.POS_GAIN - CFG.TOL.pos);
+    tj += Math.max(0, Math.hypot(A.rx - B.rx, A.ry - B.ry) * CFG.POS_GAIN - CFG.TOL.traj);
   }
   return n ? { sh: sh / n, ps: ps / n, tj: tj / n, hs } : { sh: 0, ps: 0, tj: 0, hs };
 }
 function align(a, b) {
   const pa = prep(a), pb = prep(b), n = a.length, m = b.length, W = m + 1, cs = CFG.W;
-  const band = Math.max(Math.ceil(.3 * Math.max(n, m)), Math.abs(n - m)); // Sakoe-Chiba 帶寬
+  const band = Math.max(Math.ceil(CFG.BAND * Math.max(n, m)), Math.abs(n - m)); // Sakoe-Chiba 帶寬
   const D = new Float64Array((n + 1) * W).fill(Infinity), C = new Array((n + 1) * W);
   D[0] = 0;
   for (let i = 1; i <= n; i++) for (let j = Math.max(1, i - band); j <= Math.min(m, i + band); j++) {
@@ -550,20 +575,24 @@ function align(a, b) {
 }
 function score(ref, stu) {
   if (ref.length < 3 || stu.length < 3) throw new Error('偵測到的手部動作太少,請確認雙手入鏡、光線充足後重錄。');
-  const { total, path } = align(ref, stu);
+  let res = align(ref, stu);
+  if (CFG.MIRROR) { const alt = align(ref, mirrorFrames(stu)); if (alt.total < res.total) res = alt; } // 用另一隻手也算
+  const { total, path } = res;
   if (!Number.isFinite(total) || !path.length) throw new Error('無法比對,請重錄。');
   const avg = k => path.reduce((s, c) => s + c[k], 0) / path.length;
   const sc = c => Math.max(0, Math.min(100, Math.round(100 * Math.exp(-CFG.K * c))));
   const handAvg = [0, 1].map(h => { const v = path.map(c => c.hs[h]).filter(x => x !== null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; });
   const similarity = sc(total), handScore = sc(avg('sh')), positionScore = sc(avg('ps')), trajectoryScore = sc(avg('tj'));
   const parts = [['手型', handScore, '請對照範本調整手指形狀與手掌朝向'], ['位置', positionScore, '請注意手的高低與離身體的距離'], ['軌跡', trajectoryScore, '請注意移動方向與路徑大小']];
-  const worst = parts.reduce((a, b) => b[1] < a[1] ? b : a);
-  let feedback = similarity >= 85 ? '動作特徵與範本相近,請再由老師確認手語表達。'
-    : `${worst[0]}差異最大:${worst[2]}。`;
+  const worst = parts.reduce((a, b) => b[1] < a[1] ? b : a), best = parts.reduce((a, b) => b[1] > a[1] ? b : a);
+  const mark = similarity >= 85 ? '🌟 太棒了!' : similarity >= 70 ? '👍 很不錯!' : similarity >= 50 ? '💪 有進步!' : '🌱 好的開始!';
+  let feedback = similarity >= 85 ? `${mark}動作特徵與範本很接近,請再由老師確認手語表達。`
+    : `${mark}「${best[0]}」做得最好(${best[1]} 分)。下一步可加強「${worst[0]}」:${worst[2]}。`;
   if (similarity < 85) {
     const h = handAvg.map((v, i) => [v, i]).filter(x => x[0] !== null).sort((a, b) => b[0] - a[0])[0];
     if (h && h[0] > 1) feedback += `${HAND[h[1]]}的偏差較明顯,或有一方未入鏡。`;
   }
+  feedback += `(${LEVELS[levelKey].label}模式)`;
   return { distance: Number(total.toFixed(4)), similarity, handScore, positionScore, trajectoryScore, feedback };
 }
 
@@ -672,6 +701,11 @@ $('nativeFile').onchange = async e => {
     setStatus('recordStatus', ok ? `影片分析完成(${stuFrames.length} 個有效時間點),可以按「分析手語動作」。` : '幾乎沒有偵測到手,請調整光線與位置後重錄。', ok ? 'good' : 'bad');
   } catch (err) { stuFrames = null; setStatus('recordStatus', '影片處理失敗:' + err.message, 'bad'); }
   finally { URL.revokeObjectURL(url); }
+};
+applyLevel(LS.get('matchLevel') || 'easy'); $('matchLevel').value = levelKey;
+$('matchLevel').onchange = () => {
+  applyLevel($('matchLevel').value); LS.set('matchLevel', levelKey);
+  if (latest && stuFrames && !$('analyzeBtn').disabled) $('analyzeBtn').click(); // 已有結果就用新寬鬆度重新計分
 };
 $('retryBtn').onclick = () => { resetResult(); setStatus('recordStatus', '請重新錄製。'); };
 
