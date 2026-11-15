@@ -725,6 +725,14 @@ function mirrorFrames(fr) { // 左右手互換並水平翻轉(讓用另一隻手
 }
 
 /* ---------- DTW 與分項評分 ---------- */
+function smoothFrames(fr) { // 時間方向 1-2-1 平滑(兩邊套用同一套,所以相同影片仍是 100%):降低關鍵點抖動,特別是 YouTube 擷取的雜訊
+  return fr.map((f, i) => { const g = f.slice();
+    for (let h = 0; h < 2; h++) { const b = h * PER; if (!f[b + 65]) continue;
+      const p = fr[i - 1] && fr[i - 1][b + 65] ? fr[i - 1] : null, n = fr[i + 1] && fr[i + 1][b + 65] ? fr[i + 1] : null;
+      if (!p || !n) continue;
+      for (let k = 0; k < 65; k++) g[b + k] = r2(.25 * p[b + k] + .5 * f[b + k] + .25 * n[b + k]); }
+    return g; });
+}
 function prep(fr) { // 每手相對於起點的位移(軌跡用)
   const st = [null, null];
   return fr.map(f => [0, 1].map(h => {
@@ -973,7 +981,7 @@ $('analyzeBtn').onclick = () => {
   const q = cur(); if (!q) { alert('請先選擇題目。'); return; }
   if (!template?.length) { alert('此題尚未建立 AI 標準範本。教師需先用 YouTube 或上傳影片建立範本。'); return; }
   try {
-    latest = score(motionTrim(template), stuFrames); // 範本也用同一套規則裁頭尾,兩邊起訖點才一致
+    latest = score(smoothFrames(motionTrim(template)), smoothFrames(stuFrames)); // 範本也用同一套規則裁頭尾,兩邊起訖點才一致;兩邊都做輕度平滑,降低關鍵點抖動
     { const tt = motionTrim(template), d = $('diag'); // 診斷資訊:網址加 ?debug=1 才顯示,用來查「相同影片卻分數偏低」的原因
       d.textContent = `診斷:範本 ${template.length} 格→裁剪後 ${tt.length} 格(約 ${r2(tt.length * CFG.STEP)} 秒);學生 ${stuFrames.length} 格(約 ${r2(stuFrames.length * CFG.STEP)} 秒);DTW 距離 ${latest.distance};手型 ${latest.handScore}/位置 ${latest.positionScore}/軌跡 ${latest.trajectoryScore};模式 ${levelKey}`;
       d.classList.toggle('hidden', !/[?&]debug=1/.test(location.search)); console.log(d.textContent); }
