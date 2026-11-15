@@ -412,7 +412,8 @@ import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@m
 
 const $ = id => document.getElementById(id);
 // 可調參數:K 越大評分越嚴;權重加總為 1。請用實測資料校準。
-const CFG = { TPL_MAX: 10, STU_MAX: 15, STEP: 0.2, K: 1.8, MISS: 1.5, POS_GAIN: 5, W: { shape: .5, pos: .2, traj: .3 } };
+const CFG = { TPL_MAX: 10, STU_MAX: 15, STEP: 0.2, K: 1.8, MISS: 1.5, POS_GAIN: 5, TRAJ_GAIN: 3, TRAJ_MIN: .12, SIZE_TOL: .6, W: { shape: .5, pos: .2, traj: .3 } };
+// 軌跡:位移以「整段動作範圍」正規化(TRAJ_GAIN=差距放大倍數;TRAJ_MIN=範圍下限,避免幾乎沒動時把抖動放大;SIZE_TOL=動作範圍比值低於此才扣大小分)
 const PER = 66;                 // 每手:0-62 手型、63-64 手腕位置、65 偵測旗標
 const HAND = ['右手', '左手'];  // 依「未鏡像」的自拍畫面判定,範本也請用同樣視角錄製
 let data = { questions: [], attempts: [] }, model = null, stream = null;
@@ -705,14 +706,19 @@ const LEVELS = {
 };
 let levelKey = 'easy';
 function applyLevel(k) { levelKey = LEVELS[k] ? k : 'easy'; Object.assign(CFG, LEVELS[levelKey]); }
-function pathLen(fr) { // 每隻手腕的移動總長(畫面比例),用來分辨「有沒有真的在動」
-  return [0, 1].map(h => { const b = h * PER; let L = 0, p = null;
-    fr.forEach(f => { if (!f[b + 65]) return; if (p) L += Math.hypot(f[b + 63] - p[0], f[b + 64] - p[1]); p = [f[b + 63], f[b + 64]]; });
-    return L; });
+function trajBasis(fr) { // 每手腕:動作中心與動作範圍(任兩點最大距離),軌跡用它來正規化,遠近/大小就不影響
+  return [0, 1].map(h => { const b = h * PER, pts = [];
+    fr.forEach(f => { if (f[b + 65]) pts.push([f[b + 63], f[b + 64]]); });
+    if (!pts.length) return null;
+    let mx = 0, my = 0, d = 0; pts.forEach(q => { mx += q[0]; my += q[1]; }); mx /= pts.length; my /= pts.length;
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) d = Math.max(d, Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]));
+    return { mx, my, diam: d, s: Math.max(d, CFG.TRAJ_MIN) }; });
 }
-function motionPen(ref, stu) { // 動作幅度差太多(例如手停著不動)要扣分;0=相近,1=差很多
-  const a = pathLen(ref), b = pathLen(stu); let worst = 0;
-  for (let h = 0; h < 2; h++) { const x = Math.max(a[h], .2), y = Math.max(b[h], .2); worst = Math.max(worst, 1 - Math.min(x, y) / Math.max(x, y)); }
+function motionPen(ref, stu) { // 動作範圍相差超過約 2 倍才扣分(例如範本大幅揮動、學生幾乎不動);0=相近,1=差很多
+  const a = trajBasis(ref), b = trajBasis(stu); let worst = 0;
+  for (let h = 0; h < 2; h++) { if (!a[h] || !b[h]) continue;
+    const x = a[h].s, y = b[h].s, r = Math.min(x, y) / Math.max(x, y);
+    worst = Math.max(worst, Math.max(0, (CFG.SIZE_TOL - r) / CFG.SIZE_TOL)); }
   return worst;
 }
 function mirrorFrames(fr) { // 左右手互換並水平翻轉(讓用另一隻手做動作的同學也能被接受)
@@ -733,12 +739,11 @@ function smoothFrames(fr) { // 時間方向 1-2-1 平滑(兩邊套用同一套,�
       for (let k = 0; k < 65; k++) g[b + k] = r2(.25 * p[b + k] + .5 * f[b + k] + .25 * n[b + k]); }
     return g; });
 }
-function prep(fr) { // 每手相對於起點的位移(軌跡用)
-  const st = [null, null];
+function prep(fr) { // 每手腕位置 + 相對「動作中心」並除以「動作範圍」的位移(軌跡用:只比方向與形狀)
+  const bs = trajBasis(fr);
   return fr.map(f => [0, 1].map(h => {
-    const b = h * PER; if (!f[b + 65]) return null;
-    if (!st[h]) st[h] = [f[b + 63], f[b + 64]];
-    return { x: f[b + 63], y: f[b + 64], rx: f[b + 63] - st[h][0], ry: f[b + 64] - st[h][1] };
+    const b = h * PER; if (!f[b + 65]) return null; const c = bs[h];
+    return { x: f[b + 63], y: f[b + 64], rx: (f[b + 63] - c.mx) / c.s, ry: (f[b + 64] - c.my) / c.s };
   }));
 }
 function cell(fa, fb, pa, pb) {
@@ -752,7 +757,7 @@ function cell(fa, fb, pa, pb) {
     for (let k = 0; k < 63; k++) { const d = fa[o + k] - fb[o + k]; s += d * d; }
     hs[h] = Math.max(0, Math.sqrt(s / 63) - CFG.TOL.shape); sh += hs[h];
     ps += Math.max(0, Math.hypot(A.x - B.x, A.y - B.y) * CFG.POS_GAIN - CFG.TOL.pos);
-    tj += Math.max(0, Math.hypot(A.rx - B.rx, A.ry - B.ry) * CFG.POS_GAIN - CFG.TOL.traj);
+    tj += Math.max(0, Math.hypot(A.rx - B.rx, A.ry - B.ry) * CFG.TRAJ_GAIN - CFG.TOL.traj);
   }
   return n ? { sh: sh / n, ps: ps / n, tj: tj / n, hs } : { sh: 0, ps: 0, tj: 0, hs };
 }
