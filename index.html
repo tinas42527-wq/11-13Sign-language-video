@@ -334,6 +334,7 @@
         <div><h3>分項分析</h3><p id="handScore">手型：--</p><p id="positionScore">位置：--</p><p id="trajectoryScore">軌跡：--</p></div>
       </div>
       <div id="feedback" class="status"></div>
+      <div id="diag" class="muted hidden"></div>
       <button id="saveResult" class="success" style="width:100%">💾 儲存練習成績</button>
     </div>
   </section>
@@ -954,6 +955,9 @@ $('analyzeBtn').onclick = () => {
   if (!template?.length) { alert('此題尚未建立 AI 標準範本。教師需先用 YouTube 或上傳影片建立範本。'); return; }
   try {
     latest = score(motionTrim(template), stuFrames); // 範本也用同一套規則裁頭尾,兩邊起訖點才一致
+    { const tt = motionTrim(template), d = $('diag'); // 診斷資訊:網址加 ?debug=1 才顯示,用來查「相同影片卻分數偏低」的原因
+      d.textContent = `診斷:範本 ${template.length} 格→裁剪後 ${tt.length} 格(約 ${r2(tt.length * CFG.STEP)} 秒);學生 ${stuFrames.length} 格(約 ${r2(stuFrames.length * CFG.STEP)} 秒);DTW 距離 ${latest.distance};手型 ${latest.handScore}/位置 ${latest.positionScore}/軌跡 ${latest.trajectoryScore};模式 ${levelKey}`;
+      d.classList.toggle('hidden', !/[?&]debug=1/.test(location.search)); console.log(d.textContent); }
     $('similarity').textContent = latest.similarity + '%'; $('scoreBar').style.width = latest.similarity + '%';
     $('handScore').textContent = '手型:' + latest.handScore; $('positionScore').textContent = '位置:' + latest.positionScore; $('trajectoryScore').textContent = '軌跡:' + latest.trajectoryScore;
     setStatus('feedback', latest.feedback); $('resultPanel').classList.remove('hidden'); setStatus('recordStatus', '分析完成。', 'good');
