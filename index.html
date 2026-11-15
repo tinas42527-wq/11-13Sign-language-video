@@ -316,7 +316,10 @@
       <div class="orLine">或</div>
       <button id="nativeRecord" class="secondary bigBtn">📱 手機／平板：用相機直接錄影<small>免開鏡頭,錄完即可分析</small></button>
       <input id="nativeFile" type="file" accept="video/*" capture="user" class="hidden">
-      <div id="recordStatus" class="status">請先選擇題目並開啟攝影機（手機、平板可改按「用相機直接錄影」）。</div>
+      <div class="orLine">或</div>
+      <button id="uploadRecord" class="secondary bigBtn">📁 上傳已錄好的影片<small>從相簿／檔案選擇影片(mp4、mov、webm),上傳後即可分析</small></button>
+      <input id="uploadFile" type="file" accept="video/*" class="hidden">
+      <div id="recordStatus" class="status">請先選擇題目並開啟攝影機（手機、平板可改按「用相機直接錄影」，也可「上傳已錄好的影片」）。</div>
       <div class="stepHead"><span class="stepTag">2</span>分析動作</div>
       <div class="btnRow two">
         <button id="analyzeBtn" class="success" disabled>🔍 分析手語動作</button>
@@ -915,20 +918,30 @@ $('recordStart').onclick = async () => {
 $('recordStop').onclick = () => { capturing = false; };
 // 手機/平板:呼叫系統相機錄影,錄完回傳影片檔,再於本機分析關鍵點(不上傳影片)
 $('nativeRecord').onclick = () => { if (!cur()) { setStatus('recordStatus', '請先選擇題目。', 'bad'); return; } $('nativeFile').click(); };
-$('nativeFile').onchange = async e => {
-  const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+// 上傳已錄好的影片(從相簿/檔案選取,不使用 capture)
+$('uploadRecord').onclick = () => { if (!cur()) { setStatus('recordStatus', '請先選擇題目。', 'bad'); return; } $('uploadFile').click(); };
+const MAX_UPLOAD_MB = 200;
+async function analyzeStudentFile(file) {
+  if (!file) return;
+  if (file.type && !file.type.startsWith('video/')) { setStatus('recordStatus', '這不是影片檔,請選擇 mp4、mov、webm 等影片。', 'bad'); return; }
+  if (file.size > MAX_UPLOAD_MB * 1024 * 1024) { setStatus('recordStatus', `影片檔案過大(超過 ${MAX_UPLOAD_MB} MB),請剪短或降低畫質後再上傳。`, 'bad'); return; }
   resetResult(); const url = URL.createObjectURL(file);
   try {
-    setStatus('recordStatus', '正在分析錄好的影片...');
+    setStatus('recordStatus', `正在分析影片「${file.name || '錄影檔'}」...(影片只在本機分析,不會上傳)`);
     const v = await loadVideo(url);
-    if (!v.videoWidth) throw new Error('這不是影片檔,請重新錄影。');
+    if (!v.videoWidth) throw new Error('這個檔案沒有影像,請改選 mp4/mov 影片。');
+    const cut = v.duration > CFG.STU_MAX ? `影片長 ${Math.round(v.duration)} 秒,僅分析前 ${CFG.STU_MAX} 秒。` : '';
     stuFrames = trimStatic(await extractFromVideo(v, CFG.STU_MAX, 'recordStatus'));
     const ok = stuFrames.length >= 3;
     $('analyzeBtn').disabled = !ok; $('retryBtn').disabled = false;
-    setStatus('recordStatus', ok ? `影片分析完成(${stuFrames.length} 個有效時間點${cutNote()}),可以按「分析手語動作」。` : '幾乎沒有偵測到手,請調整光線與位置後重錄。', ok ? 'good' : 'bad');
-  } catch (err) { stuFrames = null; setStatus('recordStatus', '影片處理失敗:' + err.message, 'bad'); }
-  finally { URL.revokeObjectURL(url); }
-};
+    setStatus('recordStatus', ok ? `影片分析完成(${stuFrames.length} 個有效時間點${cutNote()})。${cut}可以按「分析手語動作」。` : '幾乎沒有偵測到手,請確認影片中雙手清楚入鏡、光線充足後重新上傳。', ok ? 'good' : 'bad');
+  } catch (err) {
+    stuFrames = null;
+    setStatus('recordStatus', '影片處理失敗:' + err.message + '(若是 iPhone 的 HEVC 影片無法讀取,請改用 Safari,或在相機設定選「最相容」格式後重錄。)', 'bad');
+  } finally { URL.revokeObjectURL(url); }
+}
+$('nativeFile').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; await analyzeStudentFile(f); };
+$('uploadFile').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; await analyzeStudentFile(f); };
 applyLevel(LS.get('matchLevel') || 'easy'); $('matchLevel').value = levelKey;
 $('matchLevel').onchange = () => {
   applyLevel($('matchLevel').value); LS.set('matchLevel', levelKey);
