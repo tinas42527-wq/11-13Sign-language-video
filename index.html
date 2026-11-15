@@ -979,6 +979,8 @@ $('analyzeBtn').onclick = () => {
       d.classList.toggle('hidden', !/[?&]debug=1/.test(location.search)); console.log(d.textContent); }
     $('similarity').textContent = latest.similarity + '%'; $('scoreBar').style.width = latest.similarity + '%';
     $('handScore').textContent = '手型:' + latest.handScore; $('positionScore').textContent = '位置:' + latest.positionScore; $('trajectoryScore').textContent = '軌跡:' + latest.trajectoryScore;
+    { const tl = motionTrim(template).length, sl = stuFrames.length;
+      if (tl && sl && (sl / tl > 2 || tl / sl > 2)) latest.feedback += `(提醒:範本約 ${r2(tl * CFG.STEP)} 秒、你的影片約 ${r2(sl * CFG.STEP)} 秒,長度差很多;若你的動作正確,可能是標準範本截取不完整,請通知老師重建範本。)`; }
     setStatus('feedback', latest.feedback); $('resultPanel').classList.remove('hidden'); setStatus('recordStatus', '分析完成。', 'good');
   } catch (e) { setStatus('recordStatus', '分析失敗:' + e.message, 'bad'); }
 };
@@ -1019,7 +1021,8 @@ $('buildFromYoutube').onclick = async () => {
     template = await extractFromYoutube('templateStatus');
     if (template.length < 3) { $('ytDebug').classList.remove('hidden'); throw new Error('有效動作太短或偵測不到手,請確認起迄秒數對準手語動作,且影片中雙手清楚。(' + ytStat + ')。下方預覽是實際擷取到的畫面,可據此檢查。'); }
     if (JSON.stringify(template).length > 49000) throw new Error('範本資料過大,請縮短片段。');
-    setStatus('templateStatus', `YouTube 範本建立成功:${template.length} 個時間點。請按「儲存題目」。`, 'good');
+    const secs = r2(template.length * CFG.STEP), short = template.length < 8;
+    setStatus('templateStatus', `YouTube 範本建立${short ? '完成,但偏短' : '成功'}:${template.length} 個時間點(約 ${secs} 秒)。${ytStat}。` + (short ? '範本太短,可能沒涵蓋完整動作:請確認起迄秒數包含整個手語動作(前後各多留約 1 秒),或手在畫面中太小/太模糊;建議改用上傳影片檔建立範本。' : '請按「儲存題目」。'), short ? 'bad' : 'good');
   } catch (e) { template = null; setStatus('templateStatus', '建立失敗:' + e.message, 'bad'); }
   finally { btn.disabled = false; const b = $('ytTeacherFrame'); b.innerHTML = ''; b.classList.add('hidden'); } // 擷取完成後收起播放器
 };
