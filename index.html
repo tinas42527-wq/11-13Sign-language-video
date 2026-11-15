@@ -363,6 +363,7 @@
           <div id="ytTeacherFrame" class="hidden"></div>
           <canvas id="ytDebug" class="hidden" style="width:100%;max-width:480px;border-radius:12px;margin:8px 0;background:#000"></canvas>
           <div id="ytDebugNote" class="muted"></div>
+          <p class="muted">⚠ YouTube 範本是「擷取分頁畫面」得到的(畫面被重新壓縮、縮放),關鍵點與原始影片有誤差,同一支影片分數也無法到 100%。若有影片檔,建議改用下方「上傳影片」建立範本;上方 YouTube 網址仍可保留給學生觀看。</p>
           <button id="buildFromYoutube" class="secondary">▶ 用 YouTube 影片建立範本（擷取本分頁畫面）</button>
           <p class="muted">填好網址與起迄秒數（純秒數,例如 12 到 16）後按按鈕，在彈出視窗選「此分頁」並分享。播放器只會在擷取時暫時出現（最長 10 秒），完成後自動收起；過程中請勿切換分頁或捲動頁面。</p>
         </div>
@@ -626,6 +627,24 @@ function loadYtApi() {
   });
   return ytApi;
 }
+// 即時擷取的取樣間隔會因電腦速度而忽快忽慢(與上傳檔「每 0.2 秒精準取一格」不同),
+// 這裡依「影片實際播放時間」重取樣成固定 STEP 間隔,讓時間軸與上傳檔方式一致。
+function resampleByTime(samples) {
+  const s = []; samples.forEach(a => { if (!s.length || a.t > s[s.length - 1].t + 0.001) s.push(a); });
+  if (s.length < 2) return samples.map(a => a.fr);
+  const out = [], last = s[s.length - 1].t; let j = 0;
+  for (let g = s[0].t; g <= last + 1e-6; g += CFG.STEP) {
+    while (j < s.length - 2 && s[j + 1].t < g) j++;
+    const A = s[j], B = s[j + 1];
+    if (g <= A.t) { out.push(A.fr.slice()); continue; }
+    if (g >= B.t) { out.push(B.fr.slice()); continue; }
+    const u = (g - A.t) / (B.t - A.t), f = (u < .5 ? A.fr : B.fr).slice();
+    for (let h = 0; h < 2; h++) { const b = h * PER;
+      if (A.fr[b + 65] && B.fr[b + 65]) { for (let k = 0; k < 65; k++) f[b + k] = r2(A.fr[b + k] + (B.fr[b + k] - A.fr[b + k]) * u); f[b + 65] = 1; } }
+    out.push(f);
+  }
+  return out;
+}
 async function extractFromYoutube(tag) {
   const id = extractYoutubeId($('youtubeUrl').value.trim());
   if (!id) throw new Error('請先輸入有效的 YouTube 網址。');
@@ -664,7 +683,7 @@ async function extractFromYoutube(tag) {
       const r = iframe.getBoundingClientRect(), kx = sv.videoWidth / window.innerWidth, ky = sv.videoHeight / window.innerHeight;
       c.width = Math.max(2, Math.round(r.width * kx)); c.height = Math.max(2, Math.round(r.height * ky));
       x.drawImage(sv, r.left * kx, r.top * ky, r.width * kx, r.height * ky, 0, 0, c.width, c.height);
-      const fr = toFrame(m.detect(c)); out.push(fr); if (has(fr)) hit++;
+      const fr = toFrame(m.detect(c)); out.push({ t: Math.max(0, cur - start), fr }); if (has(fr)) hit++; // 連同影片時間一起記錄,事後重取樣成固定間隔
       if (has(fr) || hit === 0) { const d = $('ytDebug'); d.width = c.width; d.height = c.height; d.getContext('2d').drawImage(c, 0, 0); } // 預覽:顯示實際擷取到的畫面
       setStatus(tag, `擷取中 ${Math.max(0, cur - start).toFixed(1)} / ${len.toFixed(1)} 秒...(請勿切換分頁)`);
       await sleep(Math.max(0, CFG.STEP * 1000 - (performance.now() - t)));
@@ -672,7 +691,7 @@ async function extractFromYoutube(tag) {
     player.pauseVideo();
     ytStat = `共擷取 ${out.length} 格,偵測到手 ${hit} 格`;
     $('ytDebugNote').textContent = '擷取結果:' + ytStat + '。';
-    return trim(out);
+    return trim(resampleByTime(out));
   } finally { ms.getTracks().forEach(t => t.stop()); }
 }
 
